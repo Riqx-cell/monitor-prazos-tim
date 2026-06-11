@@ -133,9 +133,51 @@
   .blocked { background: #fef2f2; border-radius: 8px; padding: 10px 13px; font-size: .8rem; color: #b91c1c; font-weight: 600; }
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* LOGIN */
+  #login-screen { display:flex; position:fixed; inset:0; background:var(--navy-dark); z-index:999; align-items:center; justify-content:center; }
+  #login-screen.hidden { display:none; }
+  .login-box { background:#fff; border-radius:16px; padding:36px 32px; width:100%; max-width:360px; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+  .login-box .lb-brand { text-align:center; margin-bottom:28px; }
+  .login-box .lb-brand small { display:block; font-size:.68rem; color:var(--teal); font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  .login-box .lb-brand h2 { font-size:1.25rem; font-weight:900; color:var(--navy-dark); margin-top:4px; }
+  .login-box .fg { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+  .login-box .fg label { font-size:.7rem; font-weight:800; color:#666; text-transform:uppercase; letter-spacing:.05em; }
+  .login-box .fg input { padding:10px 12px; border:1.5px solid #e0e0e0; border-radius:8px; font-size:.93rem; font-family:inherit; outline:none; transition:border-color .15s; }
+  .login-box .fg input:focus { border-color:var(--teal); }
+  .login-box .btn-login { width:100%; padding:11px; background:var(--teal); color:var(--navy-dark); border:none; border-radius:8px; font-size:.95rem; font-weight:900; cursor:pointer; margin-top:6px; transition:filter .15s; }
+  .login-box .btn-login:hover { filter:brightness(1.08); }
+  .login-box .login-err { color:#dc2626; font-size:.8rem; font-weight:600; text-align:center; margin-top:10px; min-height:18px; }
+  .btn-logout { background:rgba(255,255,255,.12); color:rgba(255,255,255,.7); border:none; border-radius:6px; padding:5px 11px; font-size:.75rem; font-weight:700; cursor:pointer; }
+  .btn-logout:hover { background:rgba(255,255,255,.2); }
+  #app { display:none; }
+  #app.visible { display:block; }
 </style>
 </head>
 <body>
+
+<!-- TELA DE LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="lb-brand">
+      <small>Trouw e Fraga Advogados</small>
+      <h2>Monitor de Prazos TIM</h2>
+    </div>
+    <div class="fg">
+      <label>Usuário</label>
+      <input id="l-user" type="text" value="tfs" readonly style="background:#f5f5f5;color:#888;cursor:default"/>
+    </div>
+    <div class="fg">
+      <label>Senha</label>
+      <input id="l-pass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')window.doLogin()"/>
+    </div>
+    <button class="btn-login" onclick="window.doLogin()">Entrar</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<!-- APP PRINCIPAL -->
+<div id="app">
 
 <div class="hdr">
   <div class="hdr-top">
@@ -149,6 +191,7 @@
         <div class="sync-dot" id="sync-dot"></div>
         <span class="sync-label" id="sync-label">Conectando…</span>
       </div>
+      <button class="btn-logout" onclick="window.doLogout()">Sair</button>
       <button class="btn-new" onclick="openNew()">+ Novo Prazo</button>
     </div>
   </div>
@@ -216,6 +259,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app-check.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // ── Firebase ──────────────────────────────────────────────────────────────
@@ -233,8 +277,9 @@ initializeAppCheck(app, {
   provider: new ReCaptchaV3Provider('6LcgLhotAAAAAlx03m3luQOajj6NPAprkNlq2sex'),
   isTokenAutoRefreshEnabled: true
 });
-const db  = getFirestore(app);
-const col = collection(db, 'prazos');
+const auth = getAuth(app);
+const db   = getFirestore(app);
+const col  = collection(db, 'prazos');
 
 // ── State ─────────────────────────────────────────────────────────────────
 let items  = [];
@@ -287,17 +332,52 @@ async function fsAdd(data)     { return addDoc(col, {...data, createdAt: serverT
 async function fsUpdate(id, data) { return updateDoc(doc(db,'prazos',id), data); }
 async function fsDel(id)       { return deleteDoc(doc(db,'prazos',id)); }
 
-// ── Real-time listener ────────────────────────────────────────────────────
-onSnapshot(col, snap => {
-  items = snap.docs.map(d=>({id:d.id,...d.data()}));
-  document.getElementById('sync-dot').className='sync-dot';
-  document.getElementById('sync-label').textContent='Sincronizado';
-  render();
-}, err => {
-  document.getElementById('sync-dot').className='sync-dot off';
-  document.getElementById('sync-label').textContent='Sem conexão';
-  console.error(err);
+// ── Auth + Real-time listener ─────────────────────────────────────────────
+let unsubscribeSnapshot = null;
+
+onAuthStateChanged(auth, user => {
+  if (user) {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app').classList.add('visible');
+    unsubscribeSnapshot = onSnapshot(col, snap => {
+      items = snap.docs.map(d=>({id:d.id,...d.data()}));
+      document.getElementById('sync-dot').className='sync-dot';
+      document.getElementById('sync-label').textContent='Sincronizado';
+      render();
+    }, err => {
+      document.getElementById('sync-dot').className='sync-dot off';
+      document.getElementById('sync-label').textContent='Sem conexão';
+      console.error(err);
+    });
+  } else {
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('app').classList.remove('visible');
+    if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+    items = [];
+  }
 });
+
+window.doLogin = async function() {
+  const pass = document.getElementById('l-pass').value;
+  const errEl = document.getElementById('login-err');
+  const btn   = document.querySelector('.btn-login');
+  if (!pass) { errEl.textContent = 'Digite a senha.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Entrando…';
+  errEl.textContent = '';
+  try {
+    await signInWithEmailAndPassword(auth, 'tfs@monitor.local', pass);
+  } catch(e) {
+    errEl.textContent = 'Senha incorreta.';
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+};
+
+window.doLogout = async function() {
+  await signOut(auth);
+  document.getElementById('l-pass').value = '';
+};
 
 // ── Render ────────────────────────────────────────────────────────────────
 function render() {
@@ -636,5 +716,6 @@ window.protocolar  = doProtocolar;
 window.reabrir     = doReabrir;
 window.excluir     = doExcluir;
 </script>
+</div><!-- #app -->
 </body>
 </html>
