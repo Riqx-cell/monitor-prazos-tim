@@ -7,7 +7,647 @@
 <style>
   :root {
     color-scheme: light;
+    --navy-dark: #121D27;<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor de Prazos TIM — Trouw e Fraga</title>
+<style>
+  :root {
+    color-scheme: light;
     --navy-dark: #121D27;
+    --navy-mid:  #1C2B3A;
+    --teal:      #4DBFCF;
+    --bg:        #F4F6F7;
+    --text:      #1a1a1a;
+    --muted:     #666;
+    --c-atr: #DC2626; --cb-atr: #FEE2E2;
+    --c-fat: #9B1C1C; --cb-fat: #FCA5A5;
+    --c-urg: #EA580C; --cb-urg: #FFEDD5;
+    --c-ate: #B45309; --cb-ate: #FEF3C7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* HEADER */
+  .hdr { background: var(--navy-dark); color: #fff; padding: 16px 20px 0; }
+  .hdr-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .hdr-brand small { display: block; font-size: .68rem; color: var(--teal); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  .hdr-brand h1 { font-size: 1.1rem; font-weight: 800; }
+  .hdr-date { font-size: .73rem; color: rgba(255,255,255,.4); margin-top: 2px; }
+  .hdr-right { display: flex; align-items: center; gap: 10px; }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+  .sync-dot.off { background: #f87171; }
+  .sync-label { font-size: .72rem; color: rgba(255,255,255,.5); }
+  .btn-new { background: var(--teal); color: var(--navy-dark); border: none; border-radius: 8px; padding: 8px 16px; font-size: .85rem; font-weight: 800; cursor: pointer; }
+  .btn-new:hover { filter: brightness(1.1); }
+
+  .urg-bar { display: flex; gap: 4px; flex-wrap: wrap; }
+  .uc { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 7px; border-radius: 8px 8px 0 0; font-size: .72rem; font-weight: 700; letter-spacing: .04em; }
+  .uc .n { font-size: .95rem; }
+  .uc-ATRASADO { background: var(--c-atr); color: #fff; }
+  .uc-FATAL    { background: var(--c-fat); color: #fff; }
+  .uc-URGENTE  { background: var(--c-urg); color: #fff; }
+  .uc-ATENÇÃO  { background: var(--c-ate); color: #fff; }
+  .uc-NORMAL   { background: #374151; color: #fff; }
+
+  /* TABS */
+  .tabs { background: var(--navy-mid); display: flex; padding: 0 20px; }
+  .tab { padding: 10px 18px; font-size: .83rem; font-weight: 700; color: rgba(255,255,255,.5); cursor: pointer; border: none; background: none; border-bottom: 3px solid transparent; transition: all .15s; letter-spacing: .02em; }
+  .tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+  .tab .cnt { background: rgba(255,255,255,.15); border-radius: 10px; padding: 1px 6px; font-size: .7rem; margin-left: 4px; }
+
+  /* CONTENT */
+  .content { padding: 20px; max-width: 860px; margin: 0 auto; }
+  .empty { text-align: center; color: #bbb; font-size: .9rem; padding: 52px 0; }
+  .loading { text-align: center; color: #aaa; font-size: .88rem; padding: 52px 0; }
+
+  /* CARD */
+  .card { background: #fff; border-radius: 10px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); border-left: 4px solid #e0e0e0; }
+  .card.u-ATRASADO { border-left-color: var(--c-atr); }
+  .card.u-FATAL    { border-left-color: var(--c-fat); }
+  .card.u-URGENTE  { border-left-color: var(--c-urg); }
+  .card.u-ATENÇÃO  { border-left-color: var(--c-ate); }
+  .card.u-NORMAL   { border-left-color: #cbd5e1; }
+  .card.archived   { border-left-color: #9ca3af; opacity: .75; }
+
+  .card-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 14px 16px 8px; }
+  .card-l { flex: 1; min-width: 0; }
+  .c-proc { font-size: .73rem; color: var(--muted); font-weight: 500; margin-bottom: 2px; }
+  .c-caso { font-size: .97rem; font-weight: 800; color: var(--navy-dark); margin-bottom: 4px; }
+  .c-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: .76rem; color: #999; }
+  .card-r { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+
+  .sbadge { padding: 3px 10px; border-radius: 20px; font-size: .7rem; font-weight: 800; letter-spacing: .04em; white-space: nowrap; }
+  .s-Elaborar       { background: #dbeafe; color: #1e40af; }
+  .s-Enviar-TIM     { background: #dcfce7; color: #166534; }
+  .s-Ag-Retorno-TIM { background: #fef9c3; color: #854d0e; }
+  .s-PROTOCOLADO    { background: #f3f4f6; color: #6b7280; }
+
+  .ubadge { padding: 2px 8px; border-radius: 12px; font-size: .68rem; font-weight: 800; letter-spacing: .05em; }
+  .ub-ATRASADO { background: var(--cb-atr); color: var(--c-atr); }
+  .ub-FATAL    { background: var(--cb-fat); color: var(--c-fat); }
+  .ub-URGENTE  { background: var(--cb-urg); color: var(--c-urg); }
+  .ub-ATENÇÃO  { background: var(--cb-ate); color: var(--c-ate); }
+
+  .card-dates { padding: 0 16px 10px; display: flex; gap: 20px; flex-wrap: wrap; }
+  .cdi { display: flex; flex-direction: column; gap: 1px; }
+  .cdi-lbl { font-size: .64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #bbb; }
+  .cdi-val { font-size: .88rem; font-weight: 700; color: #333; }
+  .cdi-val.late  { color: var(--c-atr); }
+  .cdi-val.today { color: var(--c-urg); }
+
+  .card-desc { padding: 8px 16px 10px; border-top: 1px solid #f2f2f2; font-size: .78rem; color: #777; line-height: 1.5; }
+  .card-act { padding: 10px 16px 12px; border-top: 1px solid #f5f5f5; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .btn { padding: 6px 14px; border-radius: 6px; font-size: .8rem; font-weight: 700; cursor: pointer; border: none; transition: filter .15s; }
+  .btn:hover { filter: brightness(.92); }
+  .btn-act  { background: var(--navy-mid); color: #fff; }
+  .btn-edit { background: #f0f0f0; color: #444; }
+  .btn-prot { background: #16a34a; color: #fff; }
+  .btn-reo  { background: #f0f0f0; color: #444; }
+  .btn-del  { background: #fee2e2; color: #b91c1c; }
+
+  /* MODALS */
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; align-items: center; justify-content: center; padding: 16px; }
+  .overlay.open { display: flex; }
+  .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  .m-hdr { background: var(--navy-dark); color: #fff; padding: 16px 20px; border-radius: 14px 14px 0 0; display: flex; align-items: center; justify-content: space-between; }
+  .m-hdr h2 { font-size: .97rem; font-weight: 800; }
+  .m-close { background: none; border: none; color: rgba(255,255,255,.6); font-size: 1.4rem; cursor: pointer; line-height: 1; }
+  .m-body { padding: 20px; }
+  .m-foot { padding: 12px 20px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 8px; }
+
+  .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+  .fgrid .full { grid-column: 1/-1; }
+  .fg { display: flex; flex-direction: column; gap: 4px; }
+  .fg label { font-size: .7rem; font-weight: 800; color: #666; text-transform: uppercase; letter-spacing: .05em; }
+  .fg input, .fg select, .fg textarea { padding: 8px 10px; border: 1.5px solid #e0e0e0; border-radius: 7px; font-size: .87rem; font-family: inherit; color: var(--text); background: #fafafa; outline: none; transition: border-color .15s; }
+  .fg input:focus, .fg select:focus, .fg textarea:focus { border-color: var(--teal); background: #fff; }
+  .fg textarea { resize: vertical; min-height: 58px; }
+  .calc-preview { margin-top: 12px; padding: 10px 13px; background: #f0fdfe; border-radius: 8px; font-size: .8rem; color: #0e7490; display: none; }
+
+  .ainfo { background: #f8f9fa; border-radius: 8px; padding: 11px 14px; margin-bottom: 14px; font-size: .83rem; color: #444; line-height: 1.6; }
+  .ainfo strong { color: var(--navy-dark); }
+  .asec h3 { font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #aaa; margin-bottom: 9px; }
+  .achoices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .achoice { display: flex; align-items: center; gap: 11px; padding: 11px 14px; border-radius: 8px; border: 1.5px solid #e5e5e5; cursor: pointer; background: #fff; text-align: left; transition: border-color .15s, background .15s; width: 100%; }
+  .achoice:hover { border-color: var(--teal); background: #f0fdfe; }
+  .achoice .ico { font-size: 1.2rem; flex-shrink: 0; }
+  .achoice .txt strong { display: block; font-size: .87rem; font-weight: 700; color: #1a1a1a; }
+  .achoice .txt span  { font-size: .76rem; color: #999; }
+  .alert-r { background: #fee2e2; color: #991b1b; border-radius: 8px; padding: 9px 13px; font-size: .8rem; font-weight: 700; margin-bottom: 12px; }
+  .alert-y { background: #fef9c3; color: #78350f; border-radius: 8px; padding: 9px 13px; font-size: .8rem; font-weight: 700; margin-bottom: 12px; }
+  .blocked { background: #fef2f2; border-radius: 8px; padding: 10px 13px; font-size: .8rem; color: #b91c1c; font-weight: 600; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-top">
+    <div class="hdr-brand">
+      <small>Trouw e Fraga Advogados</small>
+      <h1>Monitor de Prazos TIM</h1>
+      <div class="hdr-date" id="hdr-date"></div>
+    </div>
+    <div class="hdr-right">
+      <div style="display:flex;align-items:center;gap:5px">
+        <div class="sync-dot" id="sync-dot"></div>
+        <span class="sync-label" id="sync-label">Conectando…</span>
+      </div>
+      <button class="btn-new" onclick="openNew()">+ Novo Prazo</button>
+    </div>
+  </div>
+  <div class="urg-bar" id="urg-bar"></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" id="tab-hoje"  onclick="setTab('hoje')">Hoje <span class="cnt" id="cnt-hoje">0</span></button>
+  <button class="tab"        id="tab-todos" onclick="setTab('todos')">Em Aberto <span class="cnt" id="cnt-todos">0</span></button>
+  <button class="tab"        id="tab-arq"   onclick="setTab('arq')">Arquivo <span class="cnt" id="cnt-arq">0</span></button>
+</div>
+
+<div class="content">
+  <div id="list-hoje"><div class="loading">Carregando…</div></div>
+  <div id="list-todos" style="display:none"></div>
+  <div id="list-arq"   style="display:none"></div>
+</div>
+
+<!-- Modal: novo / editar -->
+<div class="overlay" id="ovl-new">
+  <div class="modal">
+    <div class="m-hdr">
+      <h2 id="m-new-title">Novo Prazo</h2>
+      <button class="m-close" onclick="closeOverlay('ovl-new')">×</button>
+    </div>
+    <div class="m-body">
+      <div class="fgrid">
+        <div class="fg full"><label>Nº do Processo</label><input id="f-proc" type="text" placeholder="0000000-00.0000.0.00.0000" oninput="window.autoOrg()"/></div>
+        <div class="fg full"><label>Caso</label><input id="f-caso" type="text" placeholder="Ex: Recurso Ordinário"/></div>
+        <div class="fg"><label>Órgão <span style="font-size:.7rem;color:var(--teal);font-weight:400">(automático)</span></label><input id="f-org" type="text" placeholder="Detectado pelo nº" readonly style="background:#f0f4f5;cursor:default;color:#555"/></div>
+        <div class="fg"><label>Data da Ciência</label><input id="f-cien" type="date"/></div>
+        <div class="fg">
+          <label>Duração (dias úteis)</label>
+          <select id="f-dur">
+            <option value="5">5 dias úteis</option>
+            <option value="10" selected>10 dias úteis</option>
+            <option value="15">15 dias úteis</option>
+            <option value="S/P">S/P — Sem prazo fatal</option>
+          </select>
+        </div>
+        <div class="fg"><label>Adv. Responsável</label><input id="f-adv" type="text" placeholder="Nome"/></div>
+        <div class="fg full"><label>Descrição</label><textarea id="f-desc" placeholder="Descrição do processo…"></textarea></div>
+        <div class="fg full"><label>Providência</label><textarea id="f-prov" placeholder="Providências a tomar…"></textarea></div>
+      </div>
+      <div class="calc-preview" id="calc-prev"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-edit" onclick="closeOverlay('ovl-new')">Cancelar</button>
+      <button class="btn btn-prot" id="btn-save" onclick="saveItem()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: ação -->
+<div class="overlay" id="ovl-act">
+  <div class="modal">
+    <div class="m-hdr">
+      <h2 id="m-act-title">Registrar Ação</h2>
+      <button class="m-close" onclick="closeOverlay('ovl-act')">×</button>
+    </div>
+    <div class="m-body" id="m-act-body"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app-check.js";
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+// ── Firebase ──────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyAz0oB4YZEVdABsc5RQskb37ara8kLcO6c",
+  authDomain: "monitor-de-prazos.firebaseapp.com",
+  projectId: "monitor-de-prazos",
+  storageBucket: "monitor-de-prazos.firebasestorage.app",
+  messagingSenderId: "271268489971",
+  appId: "1:271268489971:web:1abc92f540b9082e41e586",
+  measurementId: "G-803LP8PDKY"
+};
+const app = initializeApp(firebaseConfig);
+initializeAppCheck(app, {
+  provider: new ReCaptchaV3Provider('6LcgLhotAAAAAlx03m3luQOajj6NPAprkNlq2sex'),
+  isTokenAutoRefreshEnabled: true
+});
+const db  = getFirestore(app);
+const col = collection(db, 'prazos');
+
+// ── State ─────────────────────────────────────────────────────────────────
+let items  = [];
+let editId = null;
+let tab    = 'hoje';
+
+// ── Business day utils ────────────────────────────────────────────────────
+function isRecesso(d) { const m=d.getMonth()+1,x=d.getDate(); return (m===12&&x>=20)||(m===1&&x<=20); }
+function isUtil(d)    { const w=d.getDay(); return w!==0&&w!==6&&!isRecesso(d); }
+function today()      { const n=new Date(); return new Date(n.getFullYear(),n.getMonth(),n.getDate()); }
+function sameDay(a,b) { return a.toDateString()===b.toDateString(); }
+function parseD(s)    { const[y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function toISO(d)     { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fmtBR(s)     { if(!s)return'—'; const[y,m,d]=s.split('-'); return`${d}/${m}/${y}`; }
+
+function proxUtil(d)    { let x=new Date(d); do{x.setDate(x.getDate()+1);}while(!isUtil(x)); return x; }
+function addUtil(d,n)   { let x=new Date(d),c=0; while(c<n){x.setDate(x.getDate()+1);if(isUtil(x))c++;} return x; }
+function subUtil(d,n)   { let x=new Date(d),c=0; while(c<n){x.setDate(x.getDate()-1);if(isUtil(x))c++;} return x; }
+
+// ── Calc logic ────────────────────────────────────────────────────────────
+function calcFatal(cien,dur) {
+  if(!cien||dur==='S/P')return null;
+  return addUtil(proxUtil(parseD(cien)),parseInt(dur));
+}
+function calcPrazoElaborar(cien,dur,fatal) {
+  if(dur==='S/P')return addUtil(proxUtil(parseD(cien)),5);
+  const n=parseInt(dur); return subUtil(fatal,n===5?3:n===10?5:8);
+}
+function limiteElaborar(dur,fatal) {
+  if(!fatal||dur==='S/P')return null;
+  const n=parseInt(dur); return subUtil(fatal,n===5?1:n===10?2:3);
+}
+function calcPrazoAgRetorno(dur,fatal) {
+  if(!fatal||dur==='S/P')return proxUtil(today());
+  const n=parseInt(dur); if(n===5)return proxUtil(today());
+  return subUtil(fatal,n===10?7:10);
+}
+function urgencia(item) {
+  const t=today(), fatal=item.fatal?parseD(item.fatal):null, ptf=item.prazoTF?parseD(item.prazoTF):null;
+  if(fatal){
+    if(fatal<t)return'ATRASADO'; if(sameDay(fatal,t))return'FATAL';
+    if(t>=subUtil(fatal,1))return'URGENTE'; if(t>=subUtil(fatal,3))return'ATENÇÃO';
+  } else { if(ptf&&ptf<t)return'ATRASADO'; }
+  return'NORMAL';
+}
+function urgOrd(u){return{ATRASADO:0,FATAL:1,URGENTE:2,'ATENÇÃO':3,NORMAL:4}[u]??5;}
+
+// ── Firestore helpers ─────────────────────────────────────────────────────
+async function fsAdd(data)     { return addDoc(col, {...data, createdAt: serverTimestamp()}); }
+async function fsUpdate(id, data) { return updateDoc(doc(db,'prazos',id), data); }
+async function fsDel(id)       { return deleteDoc(doc(db,'prazos',id)); }
+
+// ── Real-time listener ────────────────────────────────────────────────────
+onSnapshot(col, snap => {
+  items = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('sync-dot').className='sync-dot';
+  document.getElementById('sync-label').textContent='Sincronizado';
+  render();
+}, err => {
+  document.getElementById('sync-dot').className='sync-dot off';
+  document.getElementById('sync-label').textContent='Sem conexão';
+  console.error(err);
+});
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render() {
+  const t    = today();
+  const open = items.filter(i=>i.status!=='PROTOCOLADO');
+  const arq  = items.filter(i=>i.status==='PROTOCOLADO');
+  const hoje = open.filter(i=>i.prazoTF&&parseD(i.prazoTF)<=t).sort((a,b)=>urgOrd(urgencia(a))-urgOrd(urgencia(b)));
+  const todos= [...open].sort((a,b)=>{const d=urgOrd(urgencia(a))-urgOrd(urgencia(b));return d||((a.prazoTF||'').localeCompare(b.prazoTF||''));});
+
+  document.getElementById('cnt-hoje').textContent =hoje.length;
+  document.getElementById('cnt-todos').textContent=open.length;
+  document.getElementById('cnt-arq').textContent  =arq.length;
+  document.getElementById('hdr-date').textContent =
+    today().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+
+  const uc={ATRASADO:0,FATAL:0,URGENTE:0,'ATENÇÃO':0,NORMAL:0};
+  open.forEach(i=>{const u=urgencia(i);uc[u]=(uc[u]||0)+1;});
+  document.getElementById('urg-bar').innerHTML=
+    Object.entries(uc).map(([k,v])=>`<div class="uc uc-${k}"><span class="n">${v}</span> ${k}</div>`).join('');
+
+  document.getElementById('list-hoje').innerHTML =renderList(hoje,true);
+  document.getElementById('list-todos').innerHTML=renderList(todos,true);
+  document.getElementById('list-arq').innerHTML  =renderList(arq,false,true);
+
+  ['hoje','todos','arq'].forEach(id=>{
+    document.getElementById(`list-${id}`).style.display=tab===id?'':'none';
+    document.getElementById(`tab-${id}`).classList.toggle('active',tab===id);
+  });
+}
+
+function renderList(list,acts,arch){
+  if(!list.length)return`<div class="empty">${arch?'Nenhum processo arquivado.':'Nenhum processo aqui.'}</div>`;
+  return list.map(i=>renderCard(i,acts,arch)).join('');
+}
+
+function renderCard(item,acts,arch){
+  const u=arch?'NORMAL':urgencia(item);
+  const sClass='s-'+item.status.replace(/ /g,'-');
+  const ptfCls=dcls(item.prazoTF), fatCls=dcls(item.fatal);
+  const dFatal=item.fatal?(()=>{
+    const diff=Math.round((parseD(item.fatal)-today())/86400000);
+    if(diff<0)return`<small style="color:var(--c-atr)">(${Math.abs(diff)}d atrás)</small>`;
+    if(diff===0)return`<small style="color:var(--c-atr)">(HOJE)</small>`;
+    return`<small style="color:#aaa">(em ${diff}d)</small>`;
+  })():'';
+  const urgBadge=(arch||u==='NORMAL')?(arch?`<span class="ubadge" style="background:#f3f4f6;color:#9ca3af">ARQUIVADO</span>`:'')
+    :`<span class="ubadge ub-${u}">${u}</span>`;
+  const desc=(item.desc||item.prov)?`
+    <div class="card-desc">
+      ${item.desc?`<b>Desc:</b> ${esc(item.desc)}<br>`:''}
+      ${item.prov?`<b>Providência:</b> ${esc(item.prov)}`:''}
+    </div>`:'';
+  let actHTML='';
+  if(acts&&!arch){
+    actHTML=`<div class="card-act">
+      <button class="btn btn-act"  onclick="openAct('${item.id}')">Registrar Ação</button>
+      <button class="btn btn-edit" onclick="openEdit('${item.id}')">✏ Editar</button>
+      <button class="btn btn-prot" onclick="protocolar('${item.id}')">✓ Protocolar</button>
+    </div>`;
+  } else if(arch){
+    actHTML=`<div class="card-act">
+      <button class="btn btn-reo" onclick="reabrir('${item.id}')">↩ Reabrir</button>
+      <button class="btn btn-del" onclick="excluir('${item.id}')">🗑 Excluir</button>
+      <span style="font-size:.73rem;color:#bbb;align-self:center">Arquivado em ${fmtBR(item.arqAt)}</span>
+    </div>`;
+  }
+  return`
+  <div class="card u-${u}${arch?' archived':''}">
+    <div class="card-h">
+      <div class="card-l">
+        <div class="c-proc">${esc(item.proc||'—')}${item.adv?' · '+esc(item.adv):''}</div>
+        <div class="c-caso">${esc(item.caso||'—')}</div>
+        <div class="c-meta">
+          ${item.org?`<span>🏛 ${esc(item.org)}</span>`:''}
+          <span>⚖ ${item.dur==='S/P'?'Sem prazo fatal':item.dur+'d úteis'}</span>
+          <span>📩 Ciência: ${fmtBR(item.cien)}</span>
+        </div>
+      </div>
+      <div class="card-r"><span class="sbadge ${sClass}">${item.status}</span>${urgBadge}</div>
+    </div>
+    <div class="card-dates">
+      <div class="cdi"><div class="cdi-lbl">Prazo TF</div><div class="cdi-val${ptfCls}">${fmtBR(item.prazoTF)}</div></div>
+      <div class="cdi"><div class="cdi-lbl">Fatal ${dFatal}</div><div class="cdi-val${fatCls}">${item.fatal?fmtBR(item.fatal):'S/P'}</div></div>
+    </div>
+    ${desc}${actHTML}
+  </div>`;
+}
+
+function dcls(iso){if(!iso)return'';const t=today(),d=parseD(iso);if(d<t)return' late';if(sameDay(d,t))return' today';return'';}
+
+// ── Action modal ──────────────────────────────────────────────────────────
+function openActModal(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  const t=today(), fatal=item.fatal?parseD(item.fatal):null, u=urgencia(item);
+  let alert='';
+  if(u==='FATAL')   alert=`<div class="alert-r">⚠️ PRAZO FATAL É HOJE — protocole imediatamente!</div>`;
+  else if(u==='ATRASADO')alert=`<div class="alert-r">🚨 PRAZO FATAL VENCIDO</div>`;
+  else if(u==='URGENTE') alert=`<div class="alert-r">🔴 D-1: prazo fatal amanhã!</div>`;
+  else if(u==='ATENÇÃO') alert=`<div class="alert-y">🟡 Atenção: próximo do prazo fatal (D-3)</div>`;
+
+  let body=`<div class="ainfo"><strong>${esc(item.caso||'')} ${item.proc?'· '+esc(item.proc):''}</strong><br>
+    Status: <strong>${item.status}</strong> &nbsp;|&nbsp; Fatal: <strong>${fmtBR(item.fatal)}</strong> &nbsp;|&nbsp; Prazo TF: <strong>${fmtBR(item.prazoTF)}</strong>
+  </div>${alert}`;
+
+  if(item.status==='Elaborar'){
+    const limite=limiteElaborar(item.dur,fatal);
+    const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
+    const sugest=proxUtil(refMax);
+    const podeReag=!fatal||!limite||sugest<=limite;
+    body+=`<div class="asec"><h3>Elaboração</h3><div class="achoices">
+      <button class="achoice" onclick="aConcluido('${id}')"><span class="ico">✅</span><span class="txt"><strong>Concluído</strong><span>Peça elaborada → Enviar TIM (Prazo TF: ${fmtBR(toISO(proxUtil(t)))})</span></span></button>
+      ${podeReag?`<button class="achoice" onclick="aElabReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Reagendar</strong><span>Novo Prazo TF: ${fmtBR(toISO(item.dur==='S/P'?addUtil(refMax,3):sugest))}</span></span></button>`
+      :`<div class="blocked">🔒 Reagendamento bloqueado — conclua antes do prazo fatal.</div>`}
+    </div></div>`;
+  } else if(item.status==='Enviar TIM'){
+    const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
+    body+=`<div class="asec"><h3>Envio à TIM</h3><div class="achoices">
+      <button class="achoice" onclick="aEnviado('${id}')"><span class="ico">📤</span><span class="txt"><strong>Enviado</strong><span>Minuta enviada → Ag. Retorno TIM</span></span></button>
+      <button class="achoice" onclick="aEnvReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Reagendar +1 dia útil</strong><span>Novo Prazo TF: ${fmtBR(toISO(proxUtil(refMax)))}</span></span></button>
+    </div></div>`;
+  } else if(item.status==='Ag. Retorno TIM'){
+    const durN=item.dur==='S/P'?0:parseInt(item.dur);
+    const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
+    let sugest=proxUtil(refMax);
+    if(fatal){const dm1=subUtil(fatal,1),dm3=subUtil(fatal,3),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);if(sugest>lim)sugest=lim;}
+    body+=`<div class="asec"><h3>Aguardando Retorno TIM</h3><div class="achoices">
+      <button class="achoice" onclick="aRespondeu('${id}')"><span class="ico">📥</span><span class="txt"><strong>TIM respondeu</strong><span>Volta para Elaborar com prazo recalculado</span></span></button>
+      <button class="achoice" onclick="aAgReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Sem resposta — reagendar cobrança</strong><span>Próxima cobrança: ${fmtBR(toISO(sugest))}</span></span></button>
+    </div></div>`;
+  }
+  document.getElementById('m-act-title').textContent=item.caso||item.proc||'Ação';
+  document.getElementById('m-act-body').innerHTML=body;
+  openOverlay('ovl-act');
+}
+
+// ── Action handlers ───────────────────────────────────────────────────────
+async function doAConcluido(id){
+  await fsUpdate(id,{status:'Enviar TIM',prazoTF:toISO(proxUtil(today()))});
+  closeOverlay('ovl-act');
+}
+async function doAElabReag(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  const t=today(),fatal=item.fatal?parseD(item.fatal):null;
+  const ref=item.prazoTF?parseD(item.prazoTF):t,refMax=ref<t?t:ref;
+  let novo;
+  if(item.dur==='S/P'){novo=addUtil(refMax,3);}
+  else{
+    const limite=limiteElaborar(item.dur,fatal),sugest=proxUtil(refMax);
+    if(fatal&&limite&&sugest>limite){alert('Reagendamento bloqueado.');return;}
+    novo=sugest;
+  }
+  await fsUpdate(id,{prazoTF:toISO(novo)});
+  closeOverlay('ovl-act');
+}
+async function doAEnviado(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  const fatal=item.fatal?parseD(item.fatal):null;
+  await fsUpdate(id,{status:'Ag. Retorno TIM',prazoTF:toISO(calcPrazoAgRetorno(item.dur,fatal))});
+  closeOverlay('ovl-act');
+}
+async function doAEnvReag(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  const t=today(),ref=item.prazoTF?parseD(item.prazoTF):t,refMax=ref<t?t:ref;
+  await fsUpdate(id,{prazoTF:toISO(proxUtil(refMax))});
+  closeOverlay('ovl-act');
+}
+async function doARespondeu(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  const t=today(),fatal=item.fatal?parseD(item.fatal):null;
+  let novo;
+  if(!fatal){novo=calcPrazoElaborar(item.cien,item.dur,null);}
+  else{
+    const dm4=subUtil(fatal,4);
+    if(t<=dm4){novo=calcPrazoElaborar(item.cien,item.dur,fatal);}
+    else{const dm2=subUtil(fatal,2),cur=item.prazoTF?parseD(item.prazoTF):t;novo=cur>=dm2?proxUtil(t):dm2;}
+  }
+  await fsUpdate(id,{status:'Elaborar',prazoTF:toISO(novo)});
+  closeOverlay('ovl-act');
+}
+async function doAAgReag(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  const t=today(),fatal=item.fatal?parseD(item.fatal):null;
+  const durN=item.dur==='S/P'?0:parseInt(item.dur);
+  const ref=item.prazoTF?parseD(item.prazoTF):t,refMax=ref<t?t:ref;
+  let sugest=proxUtil(refMax);
+  if(fatal){
+    const dm1=subUtil(fatal,1),dm3=subUtil(fatal,3),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);
+    if(sugest>lim)sugest=lim;
+    if(sugest<t){alert('Prazo fatal vencido — protocole ou tome outra providência.');return;}
+  }
+  await fsUpdate(id,{prazoTF:toISO(sugest)});
+  closeOverlay('ovl-act');
+}
+async function doProtocolar(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  if(!confirm(`Confirmar protocolo de "${item.caso||item.proc}"?\nA linha será movida para o Arquivo.`))return;
+  await fsUpdate(id,{status:'PROTOCOLADO',arqAt:toISO(today())});
+}
+async function doReabrir(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  if(!confirm('Reabrir este processo?'))return;
+  const fatal=item.fatal?parseD(item.fatal):null;
+  await fsUpdate(id,{status:'Elaborar',arqAt:null,prazoTF:toISO(calcPrazoElaborar(item.cien,item.dur,fatal))});
+}
+async function doExcluir(id){
+  if(!confirm('Excluir permanentemente este processo? Esta ação não pode ser desfeita.'))return;
+  await fsDel(id);
+}
+
+// ── New / Edit modal ──────────────────────────────────────────────────────
+function openNewModal(){
+  editId=null;
+  document.getElementById('m-new-title').textContent='Novo Prazo';
+  ['f-proc','f-caso','f-org','f-adv','f-desc','f-prov'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-cien').valueAsDate=new Date();
+  document.getElementById('f-dur').value='10';
+  updPreview(); openOverlay('ovl-new');
+}
+function openEditModal(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  editId=id;
+  document.getElementById('m-new-title').textContent='Editar Prazo';
+  document.getElementById('f-proc').value=item.proc||'';
+  document.getElementById('f-caso').value=item.caso||'';
+  document.getElementById('f-org').value=item.org || orgaoFromProc(item.proc||'');
+  document.getElementById('f-cien').value=item.cien||'';
+  document.getElementById('f-dur').value=item.dur||'10';
+  document.getElementById('f-adv').value=item.adv||'';
+  document.getElementById('f-desc').value=item.desc||'';
+  document.getElementById('f-prov').value=item.prov||'';
+  updPreview(); openOverlay('ovl-new');
+}
+function updPreview(){
+  const cien=document.getElementById('f-cien').value, dur=document.getElementById('f-dur').value, el=document.getElementById('calc-prev');
+  if(!cien){el.style.display='none';return;}
+  const fatal=calcFatal(cien,dur), prazo=calcPrazoElaborar(cien,dur,fatal);
+  el.style.display='';
+  el.innerHTML=`📅 <strong>Prazo TF inicial:</strong> ${fmtBR(toISO(prazo))} &nbsp;|&nbsp; ⚖ <strong>Fatal:</strong> ${fatal?fmtBR(toISO(fatal)):'S/P'}`;
+}
+async function doSaveItem(){
+  const cien=document.getElementById('f-cien').value, caso=document.getElementById('f-caso').value.trim();
+  if(!caso||!cien){alert('Preencha ao menos o Caso e a Data da Ciência.');return;}
+  const dur=document.getElementById('f-dur').value, fatal=calcFatal(cien,dur);
+  const btn=document.getElementById('btn-save');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Salvando…';
+  try {
+    const data={
+      proc:document.getElementById('f-proc').value.trim(), caso,
+      org:document.getElementById('f-org').value.trim(), cien, dur,
+      adv:document.getElementById('f-adv').value.trim(),
+      desc:document.getElementById('f-desc').value.trim(),
+      prov:document.getElementById('f-prov').value.trim(),
+      fatal:fatal?toISO(fatal):null,
+    };
+    if(editId){
+      data.prazoTF=toISO(calcPrazoElaborar(cien,dur,fatal));
+      // only reset prazoTF if Elaborar
+      const cur=items.find(i=>i.id===editId);
+      if(cur&&cur.status!=='Elaborar')delete data.prazoTF;
+      await fsUpdate(editId,data);
+    } else {
+      data.status='Elaborar'; data.arqAt=null;
+      data.prazoTF=toISO(calcPrazoElaborar(cien,dur,fatal));
+      await fsAdd(data);
+    }
+    closeOverlay('ovl-new');
+  } finally {
+    btn.disabled=false; btn.textContent='Salvar';
+  }
+}
+
+// ── Overlay helpers ───────────────────────────────────────────────────────
+function openOverlay(id)  { document.getElementById(id).classList.add('open'); }
+function closeOverlay2(id){ document.getElementById(id).classList.remove('open'); }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
+document.getElementById('f-cien').addEventListener('change',updPreview);
+document.getElementById('f-dur').addEventListener('change',updPreview);
+
+// ── Expose to window (needed for onclick in HTML) ─────────────────────────
+// ── Detecção automática de órgão pelo número CNJ ──────────────────────────
+function orgaoFromProc(proc) {
+  const d = proc.replace(/\D/g,'');
+  if (d.length < 16) return '';
+  const J  = parseInt(d[13]);
+  const TR = parseInt(d.substring(14,16));
+  const trt = { 0:'TST', 90:'CSJT',
+    1:'TRT-1',2:'TRT-2',3:'TRT-3',4:'TRT-4',5:'TRT-5',6:'TRT-6',
+    7:'TRT-7',8:'TRT-8',9:'TRT-9',10:'TRT-10',11:'TRT-11',12:'TRT-12',
+    13:'TRT-13',14:'TRT-14',15:'TRT-15',16:'TRT-16',17:'TRT-17',18:'TRT-18',
+    19:'TRT-19',20:'TRT-20',21:'TRT-21',22:'TRT-22',23:'TRT-23',24:'TRT-24' };
+  const trf = { 90:'CJF', 1:'TRF-1',2:'TRF-2',3:'TRF-3',4:'TRF-4',5:'TRF-5' };
+  const tje = {
+    1:'TJAC',2:'TJAL',3:'TJAP',4:'TJAM',5:'TJBA',6:'TJCE',7:'TJDF',
+    8:'TJES',9:'TJGO',10:'TJMA',11:'TJMT',12:'TJMS',13:'TJMG',14:'TJPA',
+    15:'TJPB',16:'TJPR',17:'TJPE',18:'TJPI',19:'TJRJ',20:'TJRN',21:'TJRS',
+    22:'TJRO',23:'TJRR',24:'TJSC',25:'TJSE',26:'TJSP',27:'TJTO' };
+  const tre = {
+    0:'TSE',1:'TRE-AC',2:'TRE-AL',3:'TRE-AP',4:'TRE-AM',5:'TRE-BA',
+    6:'TRE-CE',7:'TRE-DF',8:'TRE-ES',9:'TRE-GO',10:'TRE-MA',11:'TRE-MT',
+    12:'TRE-MS',13:'TRE-MG',14:'TRE-PA',15:'TRE-PB',16:'TRE-PR',17:'TRE-PE',
+    18:'TRE-PI',19:'TRE-RJ',20:'TRE-RN',21:'TRE-RS',22:'TRE-RO',23:'TRE-RR',
+    24:'TRE-SC',25:'TRE-SE',26:'TRE-SP',27:'TRE-TO' };
+  if (J===1) return 'STF';
+  if (J===2) return 'CNJ';
+  if (J===3) return 'STJ';
+  if (J===4) return trf[TR] || 'TRF';
+  if (J===5) return trt[TR] || 'TRT';
+  if (J===6) return tre[TR] || 'TRE';
+  if (J===7) return TR===0 ? 'STM' : 'CJM-'+TR;
+  if (J===8) return tje[TR] || 'TJ';
+  if (J===9) return {13:'TJMMG',21:'TJMRS',26:'TJMSP'}[TR] || 'TJM';
+  return '';
+}
+window.autoOrg = function() {
+  const v = orgaoFromProc(document.getElementById('f-proc').value);
+  const el = document.getElementById('f-org');
+  el.value = v;
+  el.style.color = v ? '#1a1a1a' : '#555';
+};
+
+window.setTab      = t => { tab=t; render(); };
+window.openNew     = openNewModal;
+window.openEdit    = openEditModal;
+window.openAct     = openActModal;
+window.closeOverlay= closeOverlay2;
+window.saveItem    = doSaveItem;
+window.aConcluido  = doAConcluido;
+window.aElabReag   = doAElabReag;
+window.aEnviado    = doAEnviado;
+window.aEnvReag    = doAEnvReag;
+window.aRespondeu  = doARespondeu;
+window.aAgReag     = doAAgReag;
+window.protocolar  = doProtocolar;
+window.reabrir     = doReabrir;
+window.excluir     = doExcluir;
+</script>
+</body>
+</html>
+
     --navy-mid:  #1C2B3A;
     --teal:      #4DBFCF;<!DOCTYPE html>
 <html lang="pt-BR">
