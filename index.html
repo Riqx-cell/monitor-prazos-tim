@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Monitor de Prazos TIM — Trouw Fraga</title>
+<title>Monitor de Prazos TIM — Trouw e Fraga</title>
 <style>
   :root {
     color-scheme: light;
@@ -35,13 +35,16 @@
   .btn-new:hover { filter: brightness(1.1); }
 
   .urg-bar { display: flex; gap: 4px; flex-wrap: wrap; }
-  .uc { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 7px; border-radius: 8px 8px 0 0; font-size: .72rem; font-weight: 700; letter-spacing: .04em; }
+  .uc { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 7px; border-radius: 8px 8px 0 0; font-size: .72rem; font-weight: 700; letter-spacing: .04em; cursor: pointer; transition: opacity .15s, outline .1s; user-select: none; }
+  .uc:hover { opacity: .82; }
   .uc .n { font-size: .95rem; }
   .uc-ATRASADO { background: var(--c-atr); color: #fff; }
   .uc-FATAL    { background: var(--c-fat); color: #fff; }
   .uc-URGENTE  { background: var(--c-urg); color: #fff; }
   .uc-ATENÇÃO  { background: var(--c-ate); color: #fff; }
   .uc-NORMAL   { background: #374151; color: #fff; }
+  .uc.uc-sel   { outline: 3px solid #fff; outline-offset: -3px; }
+  .uc.uc-dim   { opacity: .35; }
 
   /* TABS */
   .tabs { background: var(--navy-mid); display: flex; padding: 0 20px; }
@@ -160,7 +163,7 @@
 <div id="login-screen">
   <div class="login-box">
     <div class="lb-brand">
-      <small>Trouw Fraga Advogados</small>
+      <small>Trouw e Fraga Advogados</small>
       <h2>Monitor de Prazos TIM</h2>
     </div>
     <div class="fg">
@@ -182,7 +185,7 @@
 <div class="hdr">
   <div class="hdr-top">
     <div class="hdr-brand">
-      <small>Trouw Fraga Advogados</small>
+      <small>Trouw e Fraga Advogados</small>
       <h1>Monitor de Prazos TIM</h1>
       <div class="hdr-date" id="hdr-date"></div>
     </div>
@@ -282,9 +285,10 @@ const db   = getFirestore(app);
 const col  = collection(db, 'prazos');
 
 // ── State ─────────────────────────────────────────────────────────────────
-let items  = [];
-let editId = null;
-let tab    = 'hoje';
+let items     = [];
+let editId    = null;
+let tab       = 'hoje';
+let filterUrg = null;
 
 // ── Business day utils ────────────────────────────────────────────────────
 function isRecesso(d) { const m=d.getMonth()+1,x=d.getDate(); return (m===12&&x>=20)||(m===1&&x<=20); }
@@ -396,10 +400,18 @@ function render() {
   const uc={ATRASADO:0,FATAL:0,URGENTE:0,'ATENÇÃO':0,NORMAL:0};
   open.forEach(i=>{const u=urgencia(i);uc[u]=(uc[u]||0)+1;});
   document.getElementById('urg-bar').innerHTML=
-    Object.entries(uc).map(([k,v])=>`<div class="uc uc-${k}"><span class="n">${v}</span> ${k}</div>`).join('');
+    Object.entries(uc).map(([k,v])=>{
+      const sel=filterUrg===k, dim=filterUrg&&!sel;
+      return`<div class="uc uc-${k}${sel?' uc-sel':''}${dim?' uc-dim':''}" onclick="window.toggleUrgFilter('${k}')"><span class="n">${v}</span> ${k}</div>`;
+    }).join('');
 
-  document.getElementById('list-hoje').innerHTML =renderList(hoje,true);
-  document.getElementById('list-todos').innerHTML=renderList(todos,true);
+  // aplica filtro de urgência se ativo
+  const applyF = list => filterUrg ? list.filter(i=>urgencia(i)===filterUrg) : list;
+  const hojeF  = applyF(hoje);
+  const todosF = applyF(todos);
+
+  document.getElementById('list-hoje').innerHTML =renderList(hojeF,true);
+  document.getElementById('list-todos').innerHTML=renderList(todosF,true);
   document.getElementById('list-arq').innerHTML  =renderList(arq,false,true);
 
   ['hoje','todos','arq'].forEach(id=>{
@@ -407,6 +419,11 @@ function render() {
     document.getElementById(`tab-${id}`).classList.toggle('active',tab===id);
   });
 }
+
+window.toggleUrgFilter = function(u) {
+  filterUrg = filterUrg===u ? null : u;
+  render();
+};
 
 function renderList(list,acts,arch){
   if(!list.length)return`<div class="empty">${arch?'Nenhum processo arquivado.':'Nenhum processo aqui.'}</div>`;
@@ -482,31 +499,47 @@ function openActModal(id){
     Status: <strong>${item.status}</strong> &nbsp;|&nbsp; Fatal: <strong>${fmtBR(item.fatal)}</strong> &nbsp;|&nbsp; Prazo TF: <strong>${fmtBR(item.prazoTF)}</strong>
   </div>${alert}`;
 
+  // botão protocolar direto (aparece em todos os status ativos)
+  const btnProtDireto=`<div class="asec"><h3>Protocolo Direto</h3><div class="achoices">
+    <button class="achoice" onclick="closeOverlay('ovl-act');protocolar('${id}')"><span class="ico">📋</span><span class="txt"><strong>Protocolar agora</strong><span>Registrar protocolo e mover para o Arquivo</span></span></button>
+  </div></div>`;
+
   if(item.status==='Elaborar'){
-    const limite=limiteElaborar(item.dur,fatal);
-    const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
-    const sugest=proxUtil(refMax);
-    const podeReag=!fatal||!limite||sugest<=limite;
-    body+=`<div class="asec"><h3>Elaboração</h3><div class="achoices">
-      <button class="achoice" onclick="aConcluido('${id}')"><span class="ico">✅</span><span class="txt"><strong>Concluído</strong><span>Peça elaborada → Enviar TIM (Prazo TF: ${fmtBR(toISO(proxUtil(t)))})</span></span></button>
-      ${podeReag?`<button class="achoice" onclick="aElabReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Reagendar</strong><span>Novo Prazo TF: ${fmtBR(toISO(item.dur==='S/P'?addUtil(refMax,3):sugest))}</span></span></button>`
-      :`<div class="blocked">🔒 Reagendamento bloqueado — conclua antes do prazo fatal.</div>`}
-    </div></div>`;
+    const atrasado = fatal && fatal <= t; // inclui o dia do fatal
+    if(atrasado){
+      // prazo fatal vencido ou é hoje: só permite protocolar diretamente
+      body += btnProtDireto;
+    } else {
+      const limite=limiteElaborar(item.dur,fatal);
+      const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
+      const sugest=proxUtil(refMax);
+      const podeReag=!fatal||!limite||sugest<=limite;
+      // prazoTF de Enviar TIM nunca pode ultrapassar o fatal
+      const novoPtfEnviar = fatal && proxUtil(t) > fatal ? fatal : proxUtil(t);
+      body+=`<div class="asec"><h3>Elaboração</h3><div class="achoices">
+        <button class="achoice" onclick="aConcluido('${id}')"><span class="ico">✅</span><span class="txt"><strong>Concluído</strong><span>Peça elaborada → Enviar TIM (Prazo TF: ${fmtBR(toISO(novoPtfEnviar))})</span></span></button>
+        ${podeReag?`<button class="achoice" onclick="aElabReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Reagendar</strong><span>Novo Prazo TF: ${fmtBR(toISO(item.dur==='S/P'?addUtil(refMax,3):sugest))}</span></span></button>`
+        :`<div class="blocked">🔒 Reagendamento bloqueado — conclua antes do prazo fatal.</div>`}
+      </div></div>${btnProtDireto}`;
+    }
   } else if(item.status==='Enviar TIM'){
     const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
     body+=`<div class="asec"><h3>Envio à TIM</h3><div class="achoices">
       <button class="achoice" onclick="aEnviado('${id}')"><span class="ico">📤</span><span class="txt"><strong>Enviado</strong><span>Minuta enviada → Ag. Retorno TIM</span></span></button>
       <button class="achoice" onclick="aEnvReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Reagendar +1 dia útil</strong><span>Novo Prazo TF: ${fmtBR(toISO(proxUtil(refMax)))}</span></span></button>
-    </div></div>`;
+    </div></div>${btnProtDireto}`;
   } else if(item.status==='Ag. Retorno TIM'){
     const durN=item.dur==='S/P'?0:parseInt(item.dur);
     const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
     let sugest=proxUtil(refMax);
     if(fatal){const dm1=subUtil(fatal,1),dm3=subUtil(fatal,3),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);if(sugest>lim)sugest=lim;}
+    const semMargem = sugest <= t;
     body+=`<div class="asec"><h3>Aguardando Retorno TIM</h3><div class="achoices">
       <button class="achoice" onclick="aRespondeu('${id}')"><span class="ico">📥</span><span class="txt"><strong>TIM respondeu</strong><span>Volta para Elaborar com prazo recalculado</span></span></button>
-      <button class="achoice" onclick="aAgReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Sem resposta — reagendar cobrança</strong><span>Próxima cobrança: ${fmtBR(toISO(sugest))}</span></span></button>
-    </div></div>`;
+      ${semMargem
+        ? `<div class="blocked">🔒 Sem margem para reagendar — protocole ou aguarde TIM hoje.</div>`
+        : `<button class="achoice" onclick="aAgReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Sem resposta — reagendar cobrança</strong><span>Próxima cobrança: ${fmtBR(toISO(sugest))}</span></span></button>`}
+    </div></div>${btnProtDireto}`;
   }
   document.getElementById('m-act-title').textContent=item.caso||item.proc||'Ação';
   document.getElementById('m-act-body').innerHTML=body;
@@ -515,7 +548,11 @@ function openActModal(id){
 
 // ── Action handlers ───────────────────────────────────────────────────────
 async function doAConcluido(id){
-  await fsUpdate(id,{status:'Enviar TIM',prazoTF:toISO(proxUtil(today()))});
+  const item=items.find(i=>i.id===id); if(!item)return;
+  const fatal=item.fatal?parseD(item.fatal):null;
+  let novoPtf=proxUtil(today());
+  if(fatal&&novoPtf>fatal)novoPtf=fatal; // prazoTF nunca ultrapassa o fatal
+  await fsUpdate(id,{status:'Enviar TIM',prazoTF:toISO(novoPtf)});
   closeOverlay('ovl-act');
 }
 async function doAElabReag(id){
@@ -566,8 +603,8 @@ async function doAAgReag(id){
   if(fatal){
     const dm1=subUtil(fatal,1),dm3=subUtil(fatal,3),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);
     if(sugest>lim)sugest=lim;
-    if(sugest<t){alert('Prazo fatal vencido — protocole ou tome outra providência.');return;}
   }
+  if(sugest<=t){alert('Sem margem para reagendamento — protocole ou aguarde resposta da TIM hoje.');return;}
   await fsUpdate(id,{prazoTF:toISO(sugest)});
   closeOverlay('ovl-act');
 }
