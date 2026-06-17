@@ -31,8 +31,18 @@
   .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
   .sync-dot.off { background: #f87171; }
   .sync-label { font-size: .72rem; color: rgba(255,255,255,.5); }
-  .btn-new { background: var(--teal); color: var(--navy-dark); border: none; border-radius: 8px; padding: 8px 16px; font-size: .85rem; font-weight: 800; cursor: pointer; }
+  .btn-new { background: var(--teal); color: var(--navy-dark); border: none; border-radius: 8px; padding: 8px 16px; font-size: .85rem; font-weight: 800; cursor: pointer; position: relative; }
   .btn-new:hover { filter: brightness(1.1); }
+  .tipo-picker { position: absolute; top: calc(100% + 6px); right: 0; background: #fff; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,.18); min-width: 200px; overflow: hidden; z-index: 200; display: none; }
+  .tipo-picker.open { display: block; }
+  .tipo-opt { display: flex; align-items: center; gap: 10px; padding: 13px 16px; font-size: .88rem; font-weight: 700; color: var(--navy-dark); cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background .12s; }
+  .tipo-opt:last-child { border-bottom: none; }
+  .tipo-opt:hover { background: #f0fdfe; }
+  .tipo-opt .tip-ico { font-size: 1.1rem; }
+  .tipo-opt .tip-sub { font-size: .73rem; color: #888; font-weight: 400; display: block; margin-top: 1px; }
+  .tipo-badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: .68rem; font-weight: 800; margin-left: 5px; vertical-align: middle; }
+  .tb-judicial { background: #dbeafe; color: #1e40af; }
+  .tb-administrativo { background: #fef9c3; color: #854d0e; }
 
   .urg-bar { display: flex; gap: 4px; flex-wrap: wrap; }
   .uc { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 7px; border-radius: 8px 8px 0 0; font-size: .72rem; font-weight: 700; letter-spacing: .04em; cursor: pointer; transition: opacity .15s, outline .1s; user-select: none; }
@@ -45,6 +55,8 @@
   .uc-NORMAL   { background: #374151; color: #fff; }
   .uc.uc-sel   { outline: 3px solid #fff; outline-offset: -3px; }
   .uc.uc-dim   { opacity: .35; }
+  .tb-jud-btn  { background: #1e40af; color: #fff; font-size: .72rem; }
+  .tb-adm-btn  { background: #854d0e; color: #fff; font-size: .72rem; }
 
   /* TABS */
   .tabs { background: var(--navy-mid); display: flex; padding: 0 20px; }
@@ -121,6 +133,9 @@
   .fg input:focus, .fg select:focus, .fg textarea:focus { border-color: var(--teal); background: #fff; }
   .fg textarea { resize: vertical; min-height: 58px; }
   .calc-preview { margin-top: 12px; padding: 10px 13px; background: #f0fdfe; border-radius: 8px; font-size: .8rem; color: #0e7490; display: none; }
+  .cb-label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: .87rem; color: var(--text); font-weight: 600; margin-top: 4px; }
+  .cb-label input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--teal); cursor: pointer; }
+  .s-Sem-Ação { background: #f3f4f6; color: #6b7280; }
 
   .ainfo { background: #f8f9fa; border-radius: 8px; padding: 11px 14px; margin-bottom: 14px; font-size: .83rem; color: #444; line-height: 1.6; }
   .ainfo strong { color: var(--navy-dark); }
@@ -195,10 +210,28 @@
         <span class="sync-label" id="sync-label">Conectando…</span>
       </div>
       <button class="btn-logout" onclick="window.doLogout()">Sair</button>
-      <button class="btn-new" onclick="openNew()">+ Novo Prazo</button>
+      <div style="position:relative">
+        <button class="btn-new" onclick="window.toggleTipoPicker(event)">+ Novo Prazo</button>
+        <div class="tipo-picker" id="tipo-picker">
+          <div class="tipo-opt" onclick="window.openNew('judicial')">
+            <span class="tip-ico">⚖️</span>
+            <span><span>Judicial</span><span class="tip-sub">Dias úteis · 5, 10, 15 ou S/P</span></span>
+          </div>
+          <div class="tipo-opt" onclick="window.openNew('administrativo')">
+            <span class="tip-ico">🏛️</span>
+            <span><span>Administrativo</span><span class="tip-sub">Dias corridos · 15, 30 ou 60</span></span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="urg-bar" id="urg-bar"></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-end">
+    <div class="urg-bar" id="urg-bar"></div>
+    <div style="display:flex;gap:4px;padding-bottom:0" id="tipo-bar">
+      <div class="uc tb-jud-btn" id="tb-btn-judicial" onclick="window.toggleTipoFilter('judicial')">⚖️ Judicial</div>
+      <div class="uc tb-adm-btn" id="tb-btn-administrativo" onclick="window.toggleTipoFilter('administrativo')">🏛️ Administrativo</div>
+    </div>
+  </div>
 </div>
 
 <div class="tabs">
@@ -222,13 +255,14 @@
     </div>
     <div class="m-body">
       <div class="fgrid">
+        <input type="hidden" id="f-tipo" value="judicial"/>
         <div class="fg full"><label>Nº do Processo</label><input id="f-proc" type="text" placeholder="0000000-00.0000.0.00.0000" oninput="window.autoOrg()"/></div>
         <div class="fg full"><label>Caso</label><input id="f-caso" type="text" placeholder="Ex: Recurso Ordinário"/></div>
         <div class="fg"><label>Órgão <span style="font-size:.7rem;color:var(--teal);font-weight:400">(automático)</span></label><input id="f-org" type="text" placeholder="Detectado pelo nº" readonly style="background:#f0f4f5;cursor:default;color:#555"/></div>
-        <div class="fg"><label>Data da Ciência</label><input id="f-cien" type="date"/></div>
+        <div class="fg"><label id="f-cien-label">Data da Disponibilização</label><input id="f-cien" type="date"/></div>
         <div class="fg">
-          <label>Duração (dias úteis)</label>
-          <select id="f-dur">
+          <label id="f-dur-label">Duração (dias úteis)</label>
+          <select id="f-dur" onchange="updPreview()">
             <option value="5">5 dias úteis</option>
             <option value="10" selected>10 dias úteis</option>
             <option value="15">15 dias úteis</option>
@@ -238,6 +272,12 @@
         <div class="fg"><label>Adv. Responsável</label><input id="f-adv" type="text" placeholder="Nome"/></div>
         <div class="fg full"><label>Descrição</label><textarea id="f-desc" placeholder="Descrição do processo…"></textarea></div>
         <div class="fg full"><label>Providência</label><textarea id="f-prov" placeholder="Providências a tomar…"></textarea></div>
+        <div class="fg full">
+          <label class="cb-label">
+            <input type="checkbox" id="f-alinha-tim" onchange="updPreview()"/>
+            <span>Precisa alinhar com a TIM</span>
+          </label>
+        </div>
       </div>
       <div class="calc-preview" id="calc-prev"></div>
     </div>
@@ -285,10 +325,11 @@ const db   = getFirestore(app);
 const col  = collection(db, 'prazos');
 
 // ── State ─────────────────────────────────────────────────────────────────
-let items     = [];
-let editId    = null;
-let tab       = 'hoje';
-let filterUrg = null;
+let items      = [];
+let editId     = null;
+let tab        = 'hoje';
+let filterUrg  = null;
+let filterTipo = null;
 
 // ── Business day utils ────────────────────────────────────────────────────
 function isRecesso(d) { const m=d.getMonth()+1,x=d.getDate(); return (m===12&&x>=20)||(m===1&&x<=20); }
@@ -386,8 +427,9 @@ window.doLogout = async function() {
 // ── Render ────────────────────────────────────────────────────────────────
 function render() {
   const t    = today();
-  const open = items.filter(i=>i.status!=='PROTOCOLADO');
-  const arq  = items.filter(i=>i.status==='PROTOCOLADO');
+  const isArq = i => i.status==='PROTOCOLADO'||i.status==='Sem Ação';
+  const open = items.filter(i=>!isArq(i));
+  const arq  = items.filter(i=>isArq(i));
   const hoje = open.filter(i=>i.prazoTF&&parseD(i.prazoTF)<=t).sort((a,b)=>urgOrd(urgencia(a))-urgOrd(urgencia(b)));
   const todos= [...open].sort((a,b)=>{const d=urgOrd(urgencia(a))-urgOrd(urgencia(b));return d||((a.prazoTF||'').localeCompare(b.prazoTF||''));});
 
@@ -405,8 +447,21 @@ function render() {
       return`<div class="uc uc-${k}${sel?' uc-sel':''}${dim?' uc-dim':''}" onclick="window.toggleUrgFilter('${k}')"><span class="n">${v}</span> ${k}</div>`;
     }).join('');
 
-  // aplica filtro de urgência se ativo
-  const applyF = list => filterUrg ? list.filter(i=>urgencia(i)===filterUrg) : list;
+  // atualiza visual dos botões de tipo
+  ['judicial','administrativo'].forEach(t => {
+    const btn = document.getElementById(`tb-btn-${t}`);
+    if(!btn) return;
+    btn.classList.toggle('uc-sel', filterTipo===t);
+    btn.classList.toggle('uc-dim', filterTipo!==null && filterTipo!==t);
+  });
+
+  // aplica filtros
+  const applyF = list => {
+    let r = list;
+    if(filterUrg)  r = r.filter(i=>urgencia(i)===filterUrg);
+    if(filterTipo) r = r.filter(i=>(i.tipo||'judicial')===filterTipo);
+    return r;
+  };
   const hojeF  = applyF(hoje);
   const todosF = applyF(todos);
 
@@ -422,6 +477,10 @@ function render() {
 
 window.toggleUrgFilter = function(u) {
   filterUrg = filterUrg===u ? null : u;
+  render();
+};
+window.toggleTipoFilter = function(t) {
+  filterTipo = filterTipo===t ? null : t;
   render();
 };
 
@@ -442,6 +501,9 @@ function renderCard(item,acts,arch){
   })():'';
   const urgBadge=(arch||u==='NORMAL')?(arch?`<span class="ubadge" style="background:#f3f4f6;color:#9ca3af">ARQUIVADO</span>`:'')
     :`<span class="ubadge ub-${u}">${u}</span>`;
+  const tipoBadge=item.tipo==='administrativo'
+    ?`<span class="tipo-badge tb-administrativo">ADM</span>`
+    :`<span class="tipo-badge tb-judicial">JUD</span>`;
   const desc=(item.desc||item.prov)?`
     <div class="card-desc">
       ${item.desc?`<b>Desc:</b> ${esc(item.desc)}<br>`:''}
@@ -473,7 +535,7 @@ function renderCard(item,acts,arch){
           <span>📩 Ciência: ${fmtBR(item.cien)}</span>
         </div>
       </div>
-      <div class="card-r"><span class="sbadge ${sClass}">${item.status}</span>${urgBadge}</div>
+      <div class="card-r">${tipoBadge}<span class="sbadge ${sClass}">${item.status}</span>${urgBadge}</div>
     </div>
     <div class="card-dates">
       <div class="cdi"><div class="cdi-lbl">Prazo TF</div><div class="cdi-val${ptfCls}">${fmtBR(item.prazoTF)}</div></div>
@@ -499,9 +561,13 @@ function openActModal(id){
     Status: <strong>${item.status}</strong> &nbsp;|&nbsp; Fatal: <strong>${fmtBR(item.fatal)}</strong> &nbsp;|&nbsp; Prazo TF: <strong>${fmtBR(item.prazoTF)}</strong>
   </div>${alert}`;
 
-  // botão protocolar direto (aparece em todos os status ativos)
-  const btnProtDireto=`<div class="asec"><h3>Protocolo Direto</h3><div class="achoices">
+  // botões de encerramento direto (aparecem em todos os status ativos)
+  const nadaBtn = item.alinhaTIM
+    ? `<button class="achoice" onclick="aNadaFazer('${id}')"><span class="ico">🚫</span><span class="txt"><strong>Nada a ser feito</strong><span>TIM decidiu não atuar — arquivar sem protocolo</span></span></button>`
+    : '';
+  const btnProtDireto=`<div class="asec"><h3>Encerramento Direto</h3><div class="achoices">
     <button class="achoice" onclick="closeOverlay('ovl-act');protocolar('${id}')"><span class="ico">📋</span><span class="txt"><strong>Protocolar agora</strong><span>Registrar protocolo e mover para o Arquivo</span></span></button>
+    ${nadaBtn}
   </div></div>`;
 
   if(item.status==='Elaborar'){
@@ -613,6 +679,12 @@ async function doProtocolar(id){
   if(!confirm(`Confirmar protocolo de "${item.caso||item.proc}"?\nA linha será movida para o Arquivo.`))return;
   await fsUpdate(id,{status:'PROTOCOLADO',arqAt:toISO(today())});
 }
+async function doANadaFazer(id){
+  const item=items.find(i=>i.id===id); if(!item)return;
+  if(!confirm(`Confirmar "Nada a ser feito" para "${item.caso||item.proc}"?\nTIM decidiu não atuar — será arquivado sem protocolo.`))return;
+  await fsUpdate(id,{status:'Sem Ação',arqAt:toISO(today())});
+  closeOverlay('ovl-act');
+}
 async function doReabrir(id){
   const item=items.find(i=>i.id===id); if(!item)return;
   if(!confirm('Reabrir este processo?'))return;
@@ -625,12 +697,32 @@ async function doExcluir(id){
 }
 
 // ── New / Edit modal ──────────────────────────────────────────────────────
-function openNewModal(){
+function setTipoForm(tipo){
+  const adm = tipo==='administrativo';
+  document.getElementById('f-tipo').value = tipo;
+  document.getElementById('f-cien-label').textContent = 'Data da Disponibilização';
+  document.getElementById('f-dur-label').textContent  = adm ? 'Duração (dias corridos)' : 'Duração (dias úteis)';
+  const sel = document.getElementById('f-dur');
+  sel.innerHTML = adm
+    ? `<option value="15">15 dias corridos</option>
+       <option value="30" selected>30 dias corridos</option>
+       <option value="60">60 dias corridos</option>`
+    : `<option value="5">5 dias úteis</option>
+       <option value="10" selected>10 dias úteis</option>
+       <option value="15">15 dias úteis</option>
+       <option value="S/P">S/P — Sem prazo fatal</option>`;
+  // "Alinhar com TIM" só faz sentido para judicial
+  document.getElementById('f-alinha-tim').closest('.fg').style.display = adm ? 'none' : '';
+  document.getElementById('m-new-title').textContent = adm ? 'Novo Prazo Administrativo' : 'Novo Prazo Judicial';
+}
+
+function openNewModal(tipo='judicial'){
   editId=null;
-  document.getElementById('m-new-title').textContent='Novo Prazo';
   ['f-proc','f-caso','f-org','f-adv','f-desc','f-prov'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('f-cien').valueAsDate=new Date();
-  document.getElementById('f-dur').value='10';
+  document.getElementById('f-alinha-tim').checked=false;
+  setTipoForm(tipo);
+  document.getElementById('tipo-picker').classList.remove('open');
   updPreview(); openOverlay('ovl-new');
 }
 function openEditModal(id){
@@ -640,24 +732,78 @@ function openEditModal(id){
   document.getElementById('f-proc').value=item.proc||'';
   document.getElementById('f-caso').value=item.caso||'';
   document.getElementById('f-org').value=item.org || orgaoFromProc(item.proc||'');
+  setTipoForm(item.tipo||'judicial');
   document.getElementById('f-cien').value=item.cien||'';
   document.getElementById('f-dur').value=item.dur||'10';
   document.getElementById('f-adv').value=item.adv||'';
   document.getElementById('f-desc').value=item.desc||'';
   document.getElementById('f-prov').value=item.prov||'';
+  document.getElementById('f-alinha-tim').checked=item.alinhaTIM||false;
   updPreview(); openOverlay('ovl-new');
 }
+// ── Cálculos Administrativos (dias corridos) ──────────────────────────────
+function addDias(d, n) { const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function subDias(d, n) { const x=new Date(d); x.setDate(x.getDate()-n); return x; }
+
+function calcFatalAdm(cien, dur) {
+  if(!cien) return null;
+  return addDias(parseD(cien), parseInt(dur));
+}
+function calcPrazoAdm(cien, dur, fatal) {
+  if(!fatal) return addDias(parseD(cien), 5);
+  const n = parseInt(dur);
+  // margem: 15→5, 30→10, 60→20 dias corridos antes do fatal
+  const margem = n===15 ? 5 : Math.round(n/3);
+  let ptf = subDias(fatal, margem);
+  const hoje = today();
+  if(ptf < hoje) ptf = hoje;
+  return ptf;
+}
+function limiteElaborarAdm(dur, fatal) {
+  if(!fatal) return null;
+  const n = parseInt(dur);
+  const margem = n===15 ? 3 : Math.round(n/3); // trava: 15→D-3, 30→D-10, 60→D-20
+  return subDias(fatal, margem);
+}
+
+// ── Funções que despacham para judicial ou administrativo ─────────────────
+function tipoAtual() { return document.getElementById('f-tipo')?.value || 'judicial'; }
+
+function calcFatalUniv(cien, dur, tipo) {
+  if(tipo==='administrativo') return calcFatalAdm(cien, dur);
+  return calcFatal(cien, dur);
+}
+function calcPrazoUniv(cien, dur, fatal, tipo) {
+  if(tipo==='administrativo') return calcPrazoAdm(cien, dur, fatal);
+  return calcPrazoElaborar(cien, dur, fatal);
+}
+
+function calcPrazoTIM(cien, dur, fatal) {
+  if(dur==='S/P') return calcPrazoElaborar(cien, dur, fatal);
+  const n = parseInt(dur);
+  const dias = n===15 ? 5 : n===10 ? 3 : 1; // 15→5, 10→3, 5→1
+  let ptf = addUtil(proxUtil(parseD(cien)), dias);
+  if(fatal && ptf > fatal) ptf = fatal; // nunca ultrapassa o fatal
+  return ptf;
+}
+
 function updPreview(){
   const cien=document.getElementById('f-cien').value, dur=document.getElementById('f-dur').value, el=document.getElementById('calc-prev');
   if(!cien){el.style.display='none';return;}
-  const fatal=calcFatal(cien,dur), prazo=calcPrazoElaborar(cien,dur,fatal);
+  const tipo=document.getElementById('f-tipo').value;
+  const fatal=calcFatalUniv(cien,dur,tipo);
+  const alinha=document.getElementById('f-alinha-tim').checked;
+  const prazo = alinha && tipo==='judicial' ? calcPrazoTIM(cien,dur,fatal) : calcPrazoUniv(cien,dur,fatal,tipo);
   el.style.display='';
-  el.innerHTML=`📅 <strong>Prazo TF inicial:</strong> ${fmtBR(toISO(prazo))} &nbsp;|&nbsp; ⚖ <strong>Fatal:</strong> ${fatal?fmtBR(toISO(fatal)):'S/P'}`;
+  el.innerHTML=`📅 <strong>Prazo TF inicial:</strong> ${fmtBR(toISO(prazo))}${alinha&&tipo==='judicial'?' <span style="color:#0e7490;font-weight:700">(alinhar TIM)</span>':''} &nbsp;|&nbsp; ⚖ <strong>Fatal:</strong> ${fatal?fmtBR(toISO(fatal)):'S/P'}`;
 }
 async function doSaveItem(){
   const cien=document.getElementById('f-cien').value, caso=document.getElementById('f-caso').value.trim();
   if(!caso||!cien){alert('Preencha ao menos o Caso e a Data da Ciência.');return;}
-  const dur=document.getElementById('f-dur').value, fatal=calcFatal(cien,dur);
+  const dur=document.getElementById('f-dur').value;
+  const tipo=document.getElementById('f-tipo').value;
+  const fatal=calcFatalUniv(cien,dur,tipo);
+  const alinhaTIM=document.getElementById('f-alinha-tim').checked && tipo==='judicial';
   const btn=document.getElementById('btn-save');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Salvando…';
   try {
@@ -668,16 +814,17 @@ async function doSaveItem(){
       desc:document.getElementById('f-desc').value.trim(),
       prov:document.getElementById('f-prov').value.trim(),
       fatal:fatal?toISO(fatal):null,
+      alinhaTIM, tipo,
     };
+    const calcPtf = () => alinhaTIM ? calcPrazoTIM(cien,dur,fatal) : calcPrazoUniv(cien,dur,fatal,tipo);
     if(editId){
-      data.prazoTF=toISO(calcPrazoElaborar(cien,dur,fatal));
-      // only reset prazoTF if Elaborar
+      data.prazoTF=toISO(calcPtf());
       const cur=items.find(i=>i.id===editId);
       if(cur&&cur.status!=='Elaborar')delete data.prazoTF;
       await fsUpdate(editId,data);
     } else {
       data.status='Elaborar'; data.arqAt=null;
-      data.prazoTF=toISO(calcPrazoElaborar(cien,dur,fatal));
+      data.prazoTF=toISO(calcPtf());
       await fsAdd(data);
     }
     closeOverlay('ovl-new');
@@ -737,6 +884,12 @@ window.autoOrg = function() {
   el.style.color = v ? '#1a1a1a' : '#555';
 };
 
+window.toggleTipoPicker = function(e) {
+  e.stopPropagation();
+  document.getElementById('tipo-picker').classList.toggle('open');
+};
+document.addEventListener('click', () => document.getElementById('tipo-picker')?.classList.remove('open'));
+
 window.setTab      = t => { tab=t; render(); };
 window.openNew     = openNewModal;
 window.openEdit    = openEditModal;
@@ -750,6 +903,7 @@ window.aEnvReag    = doAEnvReag;
 window.aRespondeu  = doARespondeu;
 window.aAgReag     = doAAgReag;
 window.protocolar  = doProtocolar;
+window.aNadaFazer  = doANadaFazer;
 window.reabrir     = doReabrir;
 window.excluir     = doExcluir;
 </script>
