@@ -696,6 +696,21 @@ function setTipoForm(tipo){
   document.getElementById('f-tipo').value = tipo;
   document.getElementById('f-cien-label').textContent = 'Data da Disponibilização';
   document.getElementById('f-dur-label').textContent  = adm ? 'Duração (dias corridos)' : 'Duração (dias úteis)';
+  document.getElementById('f-caso').placeholder = adm ? 'Ex: TIM ADM 001' : 'Ex: TIM JUD 001';
+  // Órgão: editável no adm (número diferente do CNJ), automático no judicial
+  const orgEl = document.getElementById('f-org');
+  if(adm){
+    orgEl.readOnly = false;
+    orgEl.style.background = '';
+    orgEl.style.cursor = '';
+    orgEl.style.color = '';
+    orgEl.placeholder = 'Ex: Anatel, CADE...';
+  } else {
+    orgEl.readOnly = true;
+    orgEl.style.background = '#f0f4f5';
+    orgEl.style.cursor = 'default';
+    orgEl.placeholder = 'Detectado pelo nº';
+  }
   const sel = document.getElementById('f-dur');
   sel.innerHTML = adm
     ? `<option value="15">15 dias corridos</option>
@@ -872,6 +887,7 @@ function orgaoFromProc(proc) {
   return '';
 }
 window.autoOrg = function() {
+  if(document.getElementById('f-tipo').value === 'administrativo') return;
   const v = orgaoFromProc(document.getElementById('f-proc').value);
   const el = document.getElementById('f-org');
   el.value = v;
