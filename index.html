@@ -172,9 +172,21 @@
   .btn-cfg:hover { background:rgba(255,255,255,.2); }
   .cfg-sec h3 { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#aaa; margin:14px 0 4px; border-bottom:1px solid #f0f0f0; padding-bottom:4px; }
   .cfg-desc { font-size:.73rem; color:#999; margin-bottom:7px; }
+
+  /* PENDENTES */
+  .s-pendente     { background: #f3e8ff; color: #7c3aed; }
+  .card.u-PENDENTE{ border-left-color: #7c3aed; }
+  .pend-bar { background: #f5f3ff; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .pend-bar p { font-size: .8rem; color: #5b21b6; font-weight: 600; flex: 1; }
+  .btn-import { background: #7c3aed; color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: .8rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+  .btn-import:hover { filter: brightness(1.1); }
+  .btn-desc  { background: #fee2e2; color: #b91c1c; }
+  .btn-rev   { background: #7c3aed; color: #fff; }
+  .alerte-status { font-size: .7rem; color: #999; font-style: italic; }
   #app { display:none; }
   #app.visible { display:block; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -236,6 +248,7 @@
 <div class="tabs">
   <button class="tab active" id="tab-hoje"  onclick="setTab('hoje')">Hoje <span class="cnt" id="cnt-hoje">0</span></button>
   <button class="tab"        id="tab-todos" onclick="setTab('todos')">Em Aberto <span class="cnt" id="cnt-todos">0</span></button>
+  <button class="tab"        id="tab-pend"  onclick="setTab('pend')">Pendentes ALERTE <span class="cnt" id="cnt-pend">0</span></button>
   <button class="tab"        id="tab-arq"   onclick="setTab('arq')">Arquivo <span class="cnt" id="cnt-arq">0</span></button>
 </div>
 
@@ -243,6 +256,7 @@
   <div id="list-hoje"><div class="loading">Carregando…</div></div>
   <div id="list-todos" style="display:none"></div>
   <div id="list-arq"   style="display:none"></div>
+  <div id="list-pend"  style="display:none"></div>
 </div>
 
 <!-- Modal: novo / editar -->
@@ -302,7 +316,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app-check.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, getDoc, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // ── Firebase ──────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -445,8 +459,10 @@ window.doLogout = async function() {
 // ── Render ────────────────────────────────────────────────────────────────
 function render() {
   const t    = today();
-  const isArq = i => i.status==='PROTOCOLADO'||i.status==='Sem Ação';
-  const open = items.filter(i=>!isArq(i));
+  const isArq      = i => i.status==='PROTOCOLADO'||i.status==='Sem Ação';
+  const isPendente = i => i.status==='pendente';
+  const open = items.filter(i=>!isArq(i)&&!isPendente(i));
+  const pend = items.filter(isPendente);
   const arq  = items.filter(i=>isArq(i));
   const hoje = open.filter(i=>i.prazoTF&&parseD(i.prazoTF)<=t).sort((a,b)=>urgOrd(urgencia(a))-urgOrd(urgencia(b)));
   const todos= [...open].sort((a,b)=>{const d=urgOrd(urgencia(a))-urgOrd(urgencia(b));return d||((a.prazoTF||'').localeCompare(b.prazoTF||''));});
@@ -454,6 +470,7 @@ function render() {
   document.getElementById('cnt-hoje').textContent =hoje.length;
   document.getElementById('cnt-todos').textContent=open.length;
   document.getElementById('cnt-arq').textContent  =arq.length;
+  document.getElementById('cnt-pend').textContent =pend.length;
   document.getElementById('hdr-date').textContent =
     today().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
 
@@ -486,6 +503,7 @@ function render() {
   document.getElementById('list-hoje').innerHTML =renderList(hojeF,true);
   document.getElementById('list-todos').innerHTML=renderList(todosF,true);
   document.getElementById('list-arq').innerHTML  =renderList(arq,false,true);
+  document.getElementById('list-pend').innerHTML =renderPendentes(pend);
 
   ['hoje','todos','arq'].forEach(id=>{
     document.getElementById(`list-${id}`).style.display=tab===id?'':'none';
@@ -852,7 +870,11 @@ async function doSaveItem(){
     if(editId){
       data.prazoTF=toISO(calcPtf());
       const cur=items.find(i=>i.id===editId);
-      if(cur&&cur.status!=='Elaborar')delete data.prazoTF;
+      if(cur&&cur.status==='pendente'){
+        data.status='Elaborar'; // ativa o prazo pendente
+      } else if(cur&&cur.status!=='Elaborar'){
+        delete data.prazoTF;
+      }
       await fsUpdate(editId,data);
     } else {
       data.status='Elaborar'; data.arqAt=null;
@@ -862,6 +884,7 @@ async function doSaveItem(){
     closeOverlay('ovl-new');
   } finally {
     btn.disabled=false; btn.textContent='Salvar';
+    document.getElementById('btn-save').textContent='Salvar'; // reset if was 'Confirmar Prazo'
   }
 }
 
@@ -985,6 +1008,163 @@ window.saveSettings = async function() {
   }
 };
 
+// ── Pendentes (ALERTE) ─────────────────────────────────────────────────────
+function renderPendentes(list) {
+  const bar = `<div class="pend-bar">
+    <p>📋 ${list.length} processo(s) aguardando revisão — importados do ALERTE.</p>
+    <button class="btn-import" onclick="window.importarAlerte()">📥 Importar planilha ALERTE</button>
+  </div>`;
+  if (!list.length) return `<div class="pend-bar" style="flex-direction:column;align-items:flex-start;gap:8px">
+    <p style="margin:0">Nenhum processo pendente. Importe uma planilha ALERTE para começar a revisão.</p>
+    <button class="btn-import" onclick="window.importarAlerte()">📥 Importar planilha ALERTE</button>
+  </div>`;
+  return bar + list.map(i => {
+    const fatCls = dcls(i.fatal);
+    return `<div class="card u-PENDENTE" style="border-left-color:#7c3aed">
+      <div class="card-h">
+        <div class="card-l">
+          <div class="c-proc">${esc(i.proc||'—')}${i.adv?' · '+esc(i.adv):''}</div>
+          <div class="c-caso">${esc(i.caso||'—')}</div>
+          <div class="c-meta">
+            ${i.org?`<span>🏛 ${esc(i.org)}</span>`:''}
+            <span>📩 Ciência: ${fmtBR(i.cien)}</span>
+            ${i.alerteStatus?`<span class="alerte-status">ALERTE: ${esc(i.alerteStatus)}</span>`:''}
+          </div>
+        </div>
+        <div class="card-r"><span class="sbadge s-pendente">PENDENTE</span></div>
+      </div>
+      <div class="card-dates">
+        <div class="cdi"><div class="cdi-lbl">Prazo TF (ALERTE)</div><div class="cdi-val">${fmtBR(i.prazoTF)}</div></div>
+        <div class="cdi"><div class="cdi-lbl">Fatal</div><div class="cdi-val${fatCls}">${i.fatal?fmtBR(i.fatal):'S/P'}</div></div>
+      </div>
+      ${i.prov?`<div class="card-desc"><b>Providência:</b> ${esc(i.prov)}</div>`:''}
+      ${i.desc?`<div class="card-desc" style="font-size:.73rem;color:#aaa;border-top:none;padding-top:0"><b>Desc:</b> ${esc(i.desc.substring(0,200))}${i.desc.length>200?'…':''}</div>`:''}
+      <div class="card-act">
+        <button class="btn btn-rev" onclick="revisarPendente('${i.id}')">✏ Revisar e Confirmar</button>
+        <button class="btn btn-del" onclick="descartarPendente('${i.id}')">🗑 Descartar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function doDescartarPendente(id) {
+  const item = items.find(i=>i.id===id); if(!item) return;
+  if (!confirm(`Descartar "${item.caso||item.proc}" do ALERTE? O processo não será importado.`)) return;
+  await fsDel(id);
+}
+
+function doRevisarPendente(id) {
+  const item = items.find(i=>i.id===id); if(!item) return;
+  // Estimate dur from cien/fatal
+  let dur = '10';
+  if (item.cien && item.fatal) {
+    let d = proxUtil(parseD(item.cien)), count = 0, f = parseD(item.fatal);
+    while (d < f) { d.setDate(d.getDate()+1); if(isUtil(d)) count++; }
+    dur = count <= 6 ? '5' : count <= 12 ? '10' : '15';
+  }
+  editId = id;
+  document.getElementById('m-new-title').textContent = 'Revisar e Confirmar Prazo';
+  document.getElementById('f-proc').value = item.proc||'';
+  document.getElementById('f-caso').value = item.caso||'';
+  document.getElementById('f-org').value  = item.org||'';
+  setTipoForm(item.tipo||'judicial');
+  document.getElementById('f-cien').value = item.cien||'';
+  document.getElementById('f-dur').value  = dur;
+  document.getElementById('f-adv').value  = item.adv||'';
+  document.getElementById('f-desc').value = item.desc||'';
+  document.getElementById('f-prov').value = item.prov||'';
+  document.getElementById('f-alinha-tim').checked = false;
+  document.getElementById('btn-save').textContent = 'Confirmar Prazo';
+  updPreview();
+  openOverlay('ovl-new');
+}
+
+window.importarAlerte = function() {
+  document.getElementById('xlsx-input').click();
+};
+
+window.revisarPendente  = doRevisarPendente;
+window.descartarPendente = doDescartarPendente;
+
+document.getElementById('xlsx-input').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data, {type:'array', cellDates:true});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+
+  // Find header row (contains "Processo")
+  let headerIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i] && rows[i].includes('Processo')) { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) { alert('Planilha inválida — coluna "Processo" não encontrada.'); e.target.value=''; return; }
+
+  const headers = rows[headerIdx];
+  const gi = name => headers.indexOf(name);
+  const iProc = gi('Processo');
+  const iCaso = gi('Caso TF');
+  const iCien = gi('Data Ciência');
+  const iDesc = gi('Descrição');
+
+  const fmtD = v => {
+    if (!v) return null;
+    if (v instanceof Date) {
+      return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+    }
+    return null;
+  };
+  const cleanProc = raw => {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    const m = s.match(/\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/);
+    return m ? m[0] : s.replace(/\s+/g,' ').trim();
+  };
+
+  const dataRows = rows.slice(headerIdx + 1).filter(r => r && r[iProc]);
+  if (!dataRows.length) { alert('Nenhuma linha de dados encontrada.'); e.target.value=''; return; }
+
+  // Chave composta proc+cien+fatal para evitar reimportar a mesma publicação
+  const existingKeys = new Set(items.map(i=>`${(i.proc||'').trim()}|${i.cien||''}`));
+  const batch = writeBatch(db);
+  let imported = 0, skipped = 0;
+
+  for (const row of dataRows) {
+    const proc = cleanProc(row[iProc]);
+    if (!proc) continue;
+    const key = `${proc}|${fmtD(row[iCien])||''}`;
+    if (existingKeys.has(key)) { skipped++; continue; }
+    const newRef = doc(col);
+    batch.set(newRef, {
+      proc,
+      caso:      String(row[iCaso]||'').trim(),
+      cien:      fmtD(row[iCien]),
+      desc:      String(row[iDesc]||'').trim(),
+      org:       '', adv: '', prov: '', prazoTF: null, fatal: null,
+      dur:       '10', tipo: 'judicial', alinhaTIM: false,
+      status:    'pendente', arqAt: null,
+      createdAt: serverTimestamp(),
+    });
+    imported++;
+  }
+
+  if (!imported) {
+    alert(skipped > 0
+      ? `Todos os ${skipped} processos já estão no sistema.`
+      : 'Nenhum processo válido encontrado.');
+    e.target.value=''; return;
+  }
+  try {
+    await batch.commit();
+    window.setTab('pend');
+    alert(`✅ ${imported} processo(s) importado(s) como pendente(s).${skipped?' '+skipped+' já existentes ignorados.':''}`);
+  } catch(err) {
+    alert('Erro ao importar: ' + err.message);
+  }
+  e.target.value='';
+});
+
 window.setTab      = t => { tab=t; render(); };
 window.openNew     = openNewModal;
 window.openEdit    = openEditModal;
@@ -1066,7 +1246,6 @@ window.excluir     = doExcluir;
         </div>
       </div>
       <div class="alert-y" style="margin-top:14px;font-size:.75rem;">
-        ⚠️ Em breve estas configurações serão restritas ao login da coordenadora.
       </div>
     </div>
     <div class="m-foot">
@@ -1076,6 +1255,7 @@ window.excluir     = doExcluir;
   </div>
 </div>
 
+<input type="file" id="xlsx-input" accept=".xlsx,.xls" style="display:none"/>
 </div><!-- #app -->
 </body>
 </html>
