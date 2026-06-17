@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Seed — Monitor de Prazos TIM</title>
+<style>
+  body { font-family: monospace; background: #0f172a; color: #94a3b8; padding: 32px; max-width: 900px; margin: 0 auto; }
+  h2 { color: #4DBFCF; margin-bottom: 4px; }
+  p  { color: #64748b; margin-bottom: 24px; font-size: .9rem; }
+  .line { margin: 4px 0; font-size: .85rem; }
+  .ok   { color: #4ade80; }
+  .err  { color: #f87171; }
+  .info { color: #fbbf24; }
+  .sep  { color: #475569; margin: 10px 0 4px; font-weight: bold; }
+  .panel { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+  label { display: block; font-size: .8rem; color: #94a3b8; margin-bottom: 6px; }
+  input[type=password] { width: 260px; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: .95rem; outline: none; }
+  input[type=password]:focus { border-color: #4DBFCF; }
+  #btn-login { margin-top: 12px; padding: 8px 24px; background: #4DBFCF; color: #0f172a; border: none; border-radius: 8px; font-size: .9rem; font-weight: 800; cursor: pointer; }
+  #btn { margin-top: 16px; padding: 12px 28px; background: #4DBFCF; color: #0f172a; border: none; border-radius: 8px; font-size: 1rem; font-weight: 800; cursor: pointer; }
+  #btn:disabled, #btn-login:disabled { opacity: .4; cursor: not-allowed; }
+  #seed-panel { display: none; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: .72rem; font-weight: 800; margin-left: 6px; }
+  .b-ATRASADO { background:#fef2f2; color:#dc2626; }
+  .b-FATAL    { background:#fff7ed; color:#ea580c; }
+  .b-URGENTE  { background:#fff1f2; color:#e11d48; }
+  .b-ATENÇÃO  { background:#fefce8; color:#ca8a04; }
+  .b-NORMAL   { background:#f0fdf4; color:#16a34a; }
+  .b-ARQUIVO  { background:#f1f5f9; color:#64748b; }
+  .b-JUD      { background:#dbeafe; color:#1e40af; }
+  .b-ADM      { background:#fef9c3; color:#854d0e; }
+</style>
+</head>
+<body>
+<h2>Seed — Dados de Teste</h2>
+<p>Insere 15 processos fictícios cobrindo todos os status, urgências, tipos (Judicial e Administrativo) e funcionalidades.</p>
+
+<!-- Login -->
+<div class="panel" id="login-panel">
+  <label>Senha do Monitor</label>
+  <input type="password" id="s-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')login()"/>
+  <br>
+  <button id="btn-login" onclick="login()">Entrar</button>
+  <div class="line err" id="login-err" style="margin-top:10px"></div>
+</div>
+
+<!-- Seed -->
+<div id="seed-panel">
+  <div class="panel">
+    <div class="line info">✔ Autenticado. Pronto para inserir os dados de teste.</div>
+    <div class="line" style="margin-top:8px;color:#64748b;font-size:.8rem">
+      10 Judiciais + 5 Administrativos · todos os status · todas as urgências · alinhaTIM · Sem Ação
+    </div>
+    <button id="btn" onclick="seed()">Inserir 15 processos de teste</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAz0oB4YZEVdABsc5RQskb37ara8kLcO6c",
+  authDomain: "monitor-de-prazos.firebaseapp.com",
+  projectId: "monitor-de-prazos",
+  storageBucket: "monitor-de-prazos.firebasestorage.app",
+  messagingSenderId: "271268489971",
+  appId: "1:271268489971:web:1abc92f540b9082e41e586",
+};
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+const col  = collection(db, 'prazos');
+
+function log(msg, cls, badges=[]) {
+  const d = document.createElement('div');
+  d.className = 'line ' + (cls||'');
+  d.innerHTML = msg + badges.map(b=>`<span class="badge b-${b}">${b}</span>`).join('');
+  document.getElementById('log').appendChild(d);
+}
+
+window.login = async function() {
+  const btn = document.getElementById('btn-login');
+  const pass = document.getElementById('s-pass').value;
+  const errEl = document.getElementById('login-err');
+  if (!pass) { errEl.textContent = 'Digite a senha.'; return; }
+  btn.disabled = true; btn.textContent = 'Entrando…'; errEl.textContent = '';
+  try {
+    await signInWithEmailAndPassword(auth, 'tfs@monitor.local', pass);
+    document.getElementById('login-panel').style.display = 'none';
+    document.getElementById('seed-panel').style.display  = 'block';
+  } catch(e) {
+    errEl.textContent = 'Senha incorreta.';
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
+};
+
+// ── Dados de teste ────────────────────────────────────────────────────────
+//
+// Hoje = 2026-06-17 (quarta-feira)
+// Urgências (a partir de fatal):
+//   ATRASADO → fatal ≤ 2026-06-16
+//   FATAL    → fatal = 2026-06-17
+//   URGENTE  → fatal = 2026-06-18 (D-1 útil)
+//   ATENÇÃO  → fatal = 2026-06-19 ou 20
+//   NORMAL   → fatal ≥ 2026-06-23
+//
+const processos = [
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // JUDICIAIS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  {
+    // 1. Elaborar · NORMAL · 15 dias úteis · TRT-1 · sem alinhar TIM
+    tipo:'judicial', proc:'0001111-22.2024.5.01.0001', caso:'TIM JUD 001',
+    org:'TRT-1', cien:'2026-06-05', dur:'15', adv:'Dr. Marcos', alinhaTIM:false,
+    desc:'Recurso Ordinário sobre horas extras e adicional noturno.',
+    prov:'Elaborar recurso com fundamentação em súmulas do TST.',
+    status:'Elaborar', fatal:'2026-07-06', prazoTF:'2026-06-25', arqAt:null, _urg:'NORMAL', _tipo:'JUD'
+  },
+  {
+    // 2. Elaborar · ATENÇÃO · 10 dias úteis · TRF-2 · com alinhar TIM
+    tipo:'judicial', proc:'0002222-33.2025.4.02.0002', caso:'TIM JUD 002',
+    org:'TRF-2', cien:'2026-06-09', dur:'10', adv:'Dra. Beatriz', alinhaTIM:true,
+    desc:'Agravo de instrumento contra tutela de urgência negada.',
+    prov:'Elaborar agravo reforçando o periculum in mora.',
+    status:'Elaborar', fatal:'2026-06-20', prazoTF:'2026-06-18', arqAt:null, _urg:'ATENÇÃO', _tipo:'JUD'
+  },
+  {
+    // 3. Elaborar · URGENTE · 5 dias úteis · TRT-15
+    tipo:'judicial', proc:'0003333-44.2025.5.15.0003', caso:'TIM JUD 003',
+    org:'TRT-15', cien:'2026-06-12', dur:'5', adv:'Dr. Marcos', alinhaTIM:false,
+    desc:'Embargos à execução — penhora online excessiva.',
+    prov:'Elaborar embargos com pedido de desbloqueio parcial.',
+    status:'Elaborar', fatal:'2026-06-18', prazoTF:'2026-06-17', arqAt:null, _urg:'URGENTE', _tipo:'JUD'
+  },
+  {
+    // 4. Elaborar · FATAL (hoje) · 5 dias úteis · TST
+    tipo:'judicial', proc:'0004444-55.2025.5.00.0004', caso:'TIM JUD 004',
+    org:'TST', cien:'2026-06-11', dur:'5', adv:'Dra. Beatriz', alinhaTIM:false,
+    desc:'Recurso de embargos — divergência sobre intervalo intrajornada.',
+    prov:'URGENTE: Finalizar e protocolar hoje — prazo fatal!',
+    status:'Elaborar', fatal:'2026-06-17', prazoTF:'2026-06-16', arqAt:null, _urg:'FATAL', _tipo:'JUD'
+  },
+  {
+    // 5. Elaborar · ATRASADO · 10 dias úteis · TJSP
+    tipo:'judicial', proc:'0005555-66.2024.8.26.0005', caso:'TIM JUD 005',
+    org:'TJSP', cien:'2026-05-29', dur:'10', adv:'Dr. Marcos', alinhaTIM:false,
+    desc:'Apelação cível — dano material em contrato.',
+    prov:'Prazo fatal vencido. Verificar possibilidade de protocolo extemporâneo.',
+    status:'Elaborar', fatal:'2026-06-13', prazoTF:'2026-06-11', arqAt:null, _urg:'ATRASADO', _tipo:'JUD'
+  },
+  {
+    // 6. Elaborar · S/P · TJRJ
+    tipo:'judicial', proc:'0001313-44.2024.8.19.0013', caso:'TIM JUD 006',
+    org:'TJRJ', cien:'2026-06-15', dur:'S/P', adv:'Dra. Beatriz', alinhaTIM:false,
+    desc:'Manifestação espontânea — regularização de representação processual.',
+    prov:'Elaborar petição de habilitação e juntar novos poderes.',
+    status:'Elaborar', fatal:null, prazoTF:'2026-06-25', arqAt:null, _urg:'NORMAL', _tipo:'JUD'
+  },
+  {
+    // 7. Enviar TIM · NORMAL · 15 dias úteis · STJ · com alinhar TIM
+    tipo:'judicial', proc:'0007777-88.2024.3.00.0007', caso:'TIM JUD 007',
+    org:'STJ', cien:'2026-06-01', dur:'15', adv:'Dr. Marcos', alinhaTIM:true,
+    desc:'Recurso especial — prescrição intercorrente em execução.',
+    prov:'Peça elaborada. Aguardando envio à TIM para revisão.',
+    status:'Enviar TIM', fatal:'2026-07-15', prazoTF:'2026-06-18', arqAt:null, _urg:'NORMAL', _tipo:'JUD'
+  },
+  {
+    // 8. Ag. Retorno TIM · NORMAL · 15 dias úteis · TRT-4
+    tipo:'judicial', proc:'0001212-33.2024.5.04.0012', caso:'TIM JUD 008',
+    org:'TRT-4', cien:'2026-05-28', dur:'15', adv:'Dra. Beatriz', alinhaTIM:false,
+    desc:'Recurso inominado — acidente de trabalho com perda de dedo.',
+    prov:'Minuta enviada à TIM em 13/06. Aguardando aprovação.',
+    status:'Ag. Retorno TIM', fatal:'2026-07-20', prazoTF:'2026-06-20', arqAt:null, _urg:'NORMAL', _tipo:'JUD'
+  },
+  {
+    // 9. PROTOCOLADO · TRT-1
+    tipo:'judicial', proc:'0001111-77.2023.5.01.0011', caso:'TIM JUD 009',
+    org:'TRT-1', cien:'2026-05-15', dur:'5', adv:'Dr. Marcos', alinhaTIM:false,
+    desc:'Mandado de segurança — bloqueio indevido de CNH.',
+    prov:'Protocolo realizado em 29/05/2026 via PJe.',
+    status:'PROTOCOLADO', fatal:'2026-06-02', prazoTF:'2026-05-29', arqAt:'2026-05-29', _urg:'ARQUIVO', _tipo:'JUD'
+  },
+  {
+    // 10. Sem Ação · TRF-3 · com alinhar TIM
+    tipo:'judicial', proc:'0009999-11.2024.4.03.0009', caso:'TIM JUD 010',
+    org:'TRF-3', cien:'2026-06-02', dur:'10', adv:'Dra. Beatriz', alinhaTIM:true,
+    desc:'Contrarrazões — TIM avaliou e decidiu não atuar.',
+    prov:'TIM optou por não apresentar contrarrazões.',
+    status:'Sem Ação', fatal:'2026-06-16', prazoTF:'2026-06-12', arqAt:'2026-06-12', _urg:'ARQUIVO', _tipo:'JUD'
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ADMINISTRATIVOS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  {
+    // 11. Elaborar · NORMAL · 30 dias corridos · Anatel
+    tipo:'administrativo', proc:'ADM-2026-001', caso:'TIM ADM 001',
+    org:'Anatel', cien:'2026-06-05', dur:'30', adv:'Dr. Marcos', alinhaTIM:false,
+    desc:'Resposta à notificação da Anatel sobre qualidade de sinal em SP.',
+    prov:'Elaborar resposta técnica com dados de cobertura do período.',
+    status:'Elaborar', fatal:'2026-07-05', prazoTF:'2026-06-25', arqAt:null, _urg:'NORMAL', _tipo:'ADM'
+  },
+  {
+    // 12. Elaborar · ATENÇÃO · 15 dias corridos · CADE
+    tipo:'administrativo', proc:'ADM-2026-002', caso:'TIM ADM 002',
+    org:'CADE', cien:'2026-06-05', dur:'15', adv:'Dra. Beatriz', alinhaTIM:false,
+    desc:'Manifestação em processo administrativo antitruste.',
+    prov:'Elaborar manifestação dentro do prazo.',
+    status:'Elaborar', fatal:'2026-06-20', prazoTF:'2026-06-18', arqAt:null, _urg:'ATENÇÃO', _tipo:'ADM'
+  },
+  {
+    // 13. Elaborar · URGENTE · 15 dias corridos · Anatel
+    tipo:'administrativo', proc:'ADM-2026-003', caso:'TIM ADM 003',
+    org:'Anatel', cien:'2026-06-03', dur:'15', adv:'Dr. Marcos', alinhaTIM:false,
+    desc:'Recurso administrativo contra multa por falha de cobertura.',
+    prov:'URGENTE: Finalizar recurso e enviar à TIM hoje.',
+    status:'Elaborar', fatal:'2026-06-18', prazoTF:'2026-06-17', arqAt:null, _urg:'URGENTE', _tipo:'ADM'
+  },
+  {
+    // 14. Enviar TIM · NORMAL · 60 dias corridos · PROCON
+    tipo:'administrativo', proc:'ADM-2026-004', caso:'TIM ADM 004',
+    org:'PROCON-SP', cien:'2026-05-01', dur:'60', adv:'Dra. Beatriz', alinhaTIM:false,
+    desc:'Defesa em processo administrativo de consumidor no PROCON-SP.',
+    prov:'Peça elaborada. Aguardando revisão e envio à TIM.',
+    status:'Enviar TIM', fatal:'2026-06-30', prazoTF:'2026-06-19', arqAt:null, _urg:'NORMAL', _tipo:'ADM'
+  },
+  {
+    // 15. PROTOCOLADO · 30 dias corridos · Anatel
+    tipo:'administrativo', proc:'ADM-2026-005', caso:'TIM ADM 005',
+    org:'Anatel', cien:'2026-05-01', dur:'30', adv:'Dr. Marcos', alinhaTIM:false,
+    desc:'Resposta a ofício sobre plano de expansão de rede.',
+    prov:'Protocolo realizado em 20/05/2026 via portal Anatel.',
+    status:'PROTOCOLADO', fatal:'2026-05-31', prazoTF:'2026-05-21', arqAt:'2026-05-20', _urg:'ARQUIVO', _tipo:'ADM'
+  },
+];
+
+window.seed = async function() {
+  const btn = document.getElementById('btn');
+  btn.disabled = true;
+  log('── Iniciando inserção de 15 processos de teste ──────────────────', 'info');
+  log('', '');
+
+  const groups = {
+    'Judiciais — Elaborar':      processos.filter(p=>p.tipo==='judicial'&&p.status==='Elaborar'),
+    'Judiciais — Enviar TIM':    processos.filter(p=>p.tipo==='judicial'&&p.status==='Enviar TIM'),
+    'Judiciais — Ag. Retorno':   processos.filter(p=>p.tipo==='judicial'&&p.status==='Ag. Retorno TIM'),
+    'Judiciais — Arquivo':       processos.filter(p=>p.tipo==='judicial'&&(p.status==='PROTOCOLADO'||p.status==='Sem Ação')),
+    'Administrativos — Ativos':  processos.filter(p=>p.tipo==='administrativo'&&p.status!=='PROTOCOLADO'),
+    'Administrativos — Arquivo': processos.filter(p=>p.tipo==='administrativo'&&p.status==='PROTOCOLADO'),
+  };
+
+  let total = 0, erros = 0;
+
+  for (const [grupo, lista] of Object.entries(groups)) {
+    if(!lista.length) continue;
+    log(`── ${grupo} (${lista.length}) ──────────────────────────────────`, 'sep');
+    for (const p of lista) {
+      try {
+        const { _urg, _tipo, ...data } = p;
+        await addDoc(col, { ...data, createdAt: serverTimestamp() });
+        log(`✔ ${p.caso} · ${p.org} · Fatal: ${p.fatal||'S/P'}`, 'ok', [_tipo, _urg]);
+        total++;
+      } catch(e) {
+        log(`✘ ${p.caso} — ${e.message}`, 'err');
+        erros++;
+      }
+    }
+    log('', '');
+  }
+
+  log(`── Concluído: ${total} inseridos, ${erros} erros ─────────────────────`, erros>0?'err':'info');
+  btn.textContent = 'Concluído!';
+};
+</script>
+</body>
+</html>
