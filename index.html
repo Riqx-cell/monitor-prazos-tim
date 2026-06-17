@@ -168,6 +168,10 @@
   .login-box .login-err { color:#dc2626; font-size:.8rem; font-weight:600; text-align:center; margin-top:10px; min-height:18px; }
   .btn-logout { background:rgba(255,255,255,.12); color:rgba(255,255,255,.7); border:none; border-radius:6px; padding:5px 11px; font-size:.75rem; font-weight:700; cursor:pointer; }
   .btn-logout:hover { background:rgba(255,255,255,.2); }
+  .btn-cfg  { background:rgba(255,255,255,.12); color:rgba(255,255,255,.7); border:none; border-radius:6px; padding:5px 11px; font-size:.85rem; font-weight:700; cursor:pointer; }
+  .btn-cfg:hover { background:rgba(255,255,255,.2); }
+  .cfg-sec h3 { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#aaa; margin:14px 0 4px; border-bottom:1px solid #f0f0f0; padding-bottom:4px; }
+  .cfg-desc { font-size:.73rem; color:#999; margin-bottom:7px; }
   #app { display:none; }
   #app.visible { display:block; }
 </style>
@@ -209,6 +213,7 @@
         <div class="sync-dot" id="sync-dot"></div>
         <span class="sync-label" id="sync-label">Conectando…</span>
       </div>
+      <button class="btn-cfg" onclick="window.openSettings()">⚙</button>
       <button class="btn-logout" onclick="window.doLogout()">Sair</button>
       <div style="position:relative">
         <button class="btn-new" onclick="window.toggleTipoPicker(event)">+ Novo Prazo</button>
@@ -297,7 +302,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app-check.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 // ── Firebase ──────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -325,6 +330,18 @@ let tab        = 'hoje';
 let filterUrg  = null;
 let filterTipo = null;
 
+// ── Config ────────────────────────────────────────────────────────────────
+const defaultCfg = {
+  urgente_dias:1, atencao_dias:3,
+  jud_elab_5:3, jud_elab_10:5, jud_elab_15:8,
+  jud_lim_5:1, jud_lim_10:2, jud_lim_15:3,
+  jud_tim_5:1, jud_tim_10:3, jud_tim_15:5,
+  jud_ag_10:7, jud_ag_15:10,
+  adm_ptf_15:5, adm_ptf_30:10, adm_ptf_60:20,
+  adm_lim_15:3, adm_lim_30:10, adm_lim_60:20,
+};
+let cfg = {...defaultCfg};
+
 // ── Business day utils ────────────────────────────────────────────────────
 function isRecesso(d) { const m=d.getMonth()+1,x=d.getDate(); return (m===12&&x>=20)||(m===1&&x<=20); }
 function isUtil(d)    { const w=d.getDay(); return w!==0&&w!==6&&!isRecesso(d); }
@@ -345,22 +362,22 @@ function calcFatal(cien,dur) {
 }
 function calcPrazoElaborar(cien,dur,fatal) {
   if(dur==='S/P')return addUtil(proxUtil(parseD(cien)),5);
-  const n=parseInt(dur); return subUtil(fatal,n===5?3:n===10?5:8);
+  const n=parseInt(dur); return subUtil(fatal,n===5?cfg.jud_elab_5:n===10?cfg.jud_elab_10:cfg.jud_elab_15);
 }
 function limiteElaborar(dur,fatal) {
   if(!fatal||dur==='S/P')return null;
-  const n=parseInt(dur); return subUtil(fatal,n===5?1:n===10?2:3);
+  const n=parseInt(dur); return subUtil(fatal,n===5?cfg.jud_lim_5:n===10?cfg.jud_lim_10:cfg.jud_lim_15);
 }
 function calcPrazoAgRetorno(dur,fatal) {
   if(!fatal||dur==='S/P')return proxUtil(today());
   const n=parseInt(dur); if(n===5)return proxUtil(today());
-  return subUtil(fatal,n===10?7:10);
+  return subUtil(fatal,n===10?cfg.jud_ag_10:cfg.jud_ag_15);
 }
 function urgencia(item) {
   const t=today(), fatal=item.fatal?parseD(item.fatal):null, ptf=item.prazoTF?parseD(item.prazoTF):null;
   if(fatal){
     if(fatal<t)return'ATRASADO'; if(sameDay(fatal,t))return'FATAL';
-    if(t>=subUtil(fatal,1))return'URGENTE'; if(t>=subUtil(fatal,3))return'ATENÇÃO';
+    if(t>=subUtil(fatal,cfg.urgente_dias))return'URGENTE'; if(t>=subUtil(fatal,cfg.atencao_dias))return'ATENÇÃO';
   } else { if(ptf&&ptf<t)return'ATRASADO'; }
   return'NORMAL';
 }
@@ -373,11 +390,16 @@ async function fsDel(id)       { return deleteDoc(doc(db,'prazos',id)); }
 
 // ── Auth + Real-time listener ─────────────────────────────────────────────
 let unsubscribeSnapshot = null;
+let unsubscribeConfig   = null;
 
 onAuthStateChanged(auth, user => {
   if (user) {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app').classList.add('visible');
+    unsubscribeConfig = onSnapshot(doc(db,'config','prazos'), snap => {
+      cfg = snap.exists() ? {...defaultCfg, ...snap.data()} : {...defaultCfg};
+      render();
+    }, err => console.warn('Config listener error', err));
     unsubscribeSnapshot = onSnapshot(col, snap => {
       items = snap.docs.map(d=>({id:d.id,...d.data()}));
       document.getElementById('sync-dot').className='sync-dot';
@@ -392,6 +414,8 @@ onAuthStateChanged(auth, user => {
     document.getElementById('login-screen').classList.remove('hidden');
     document.getElementById('app').classList.remove('visible');
     if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+    if (unsubscribeConfig)   { unsubscribeConfig();   unsubscribeConfig   = null; }
+    cfg = {...defaultCfg};
     items = [];
   }
 });
@@ -548,8 +572,8 @@ function openActModal(id){
   let alert='';
   if(u==='FATAL')   alert=`<div class="alert-r">⚠️ PRAZO FATAL É HOJE — protocole imediatamente!</div>`;
   else if(u==='ATRASADO')alert=`<div class="alert-r">🚨 PRAZO FATAL VENCIDO</div>`;
-  else if(u==='URGENTE') alert=`<div class="alert-r">🔴 D-1: prazo fatal amanhã!</div>`;
-  else if(u==='ATENÇÃO') alert=`<div class="alert-y">🟡 Atenção: próximo do prazo fatal (D-3)</div>`;
+  else if(u==='URGENTE') alert=`<div class="alert-r">🔴 D-${cfg.urgente_dias}: prazo fatal ${cfg.urgente_dias===1?'amanhã':'em breve'}!</div>`;
+  else if(u==='ATENÇÃO') alert=`<div class="alert-y">🟡 Atenção: próximo do prazo fatal (D-${cfg.atencao_dias})</div>`;
 
   let body=`<div class="ainfo"><strong>${esc(item.caso||'')} ${item.proc?'· '+esc(item.proc):''}</strong><br>
     Status: <strong>${item.status}</strong> &nbsp;|&nbsp; Fatal: <strong>${fmtBR(item.fatal)}</strong> &nbsp;|&nbsp; Prazo TF: <strong>${fmtBR(item.prazoTF)}</strong>
@@ -592,7 +616,7 @@ function openActModal(id){
     const durN=item.dur==='S/P'?0:parseInt(item.dur);
     const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
     let sugest=proxUtil(refMax);
-    if(fatal){const dm1=subUtil(fatal,1),dm3=subUtil(fatal,3),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);if(sugest>lim)sugest=lim;}
+    if(fatal){const dm1=subUtil(fatal,cfg.urgente_dias),dm3=subUtil(fatal,cfg.atencao_dias),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);if(sugest>lim)sugest=lim;}
     const semMargem = sugest <= t;
     body+=`<div class="asec"><h3>Aguardando Retorno TIM</h3><div class="achoices">
       <button class="achoice" onclick="aRespondeu('${id}')"><span class="ico">📥</span><span class="txt"><strong>TIM respondeu</strong><span>Volta para Elaborar com prazo recalculado</span></span></button>
@@ -661,7 +685,7 @@ async function doAAgReag(id){
   const ref=item.prazoTF?parseD(item.prazoTF):t,refMax=ref<t?t:ref;
   let sugest=proxUtil(refMax);
   if(fatal){
-    const dm1=subUtil(fatal,1),dm3=subUtil(fatal,3),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);
+    const dm1=subUtil(fatal,cfg.urgente_dias),dm3=subUtil(fatal,cfg.atencao_dias),lim=(durN===5||durN===0)?dm1:(t>=dm3?dm1:dm3);
     if(sugest>lim)sugest=lim;
   }
   if(sugest<=t){alert('Sem margem para reagendamento — protocole ou aguarde resposta da TIM hoje.');return;}
@@ -761,8 +785,7 @@ function calcFatalAdm(cien, dur) {
 function calcPrazoAdm(cien, dur, fatal) {
   if(!fatal) return addDias(parseD(cien), 5);
   const n = parseInt(dur);
-  // margem: 15→5, 30→10, 60→20 dias corridos antes do fatal
-  const margem = n===15 ? 5 : Math.round(n/3);
+  const margem = n===15?cfg.adm_ptf_15:n===30?cfg.adm_ptf_30:cfg.adm_ptf_60;
   let ptf = subDias(fatal, margem);
   const hoje = today();
   if(ptf < hoje) ptf = hoje;
@@ -771,7 +794,7 @@ function calcPrazoAdm(cien, dur, fatal) {
 function limiteElaborarAdm(dur, fatal) {
   if(!fatal) return null;
   const n = parseInt(dur);
-  const margem = n===15 ? 3 : Math.round(n/3); // trava: 15→D-3, 30→D-10, 60→D-20
+  const margem = n===15?cfg.adm_lim_15:n===30?cfg.adm_lim_30:cfg.adm_lim_60;
   return subDias(fatal, margem);
 }
 
@@ -790,7 +813,7 @@ function calcPrazoUniv(cien, dur, fatal, tipo) {
 function calcPrazoTIM(cien, dur, fatal) {
   if(dur==='S/P') return calcPrazoElaborar(cien, dur, fatal);
   const n = parseInt(dur);
-  const dias = n===15 ? 5 : n===10 ? 3 : 1; // 15→5, 10→3, 5→1
+  const dias = n===15?cfg.jud_tim_15:n===10?cfg.jud_tim_10:cfg.jud_tim_5;
   let ptf = addUtil(proxUtil(parseD(cien)), dias);
   if(fatal && ptf > fatal) ptf = fatal; // nunca ultrapassa o fatal
   return ptf;
@@ -900,6 +923,68 @@ window.toggleTipoPicker = function(e) {
 };
 document.addEventListener('click', () => document.getElementById('tipo-picker')?.classList.remove('open'));
 
+
+window.openSettings = function() {
+  const g = id => document.getElementById(id);
+  g('cfg-urgente').value      = cfg.urgente_dias;
+  g('cfg-atencao').value      = cfg.atencao_dias;
+  g('cfg-jud-elab-5').value   = cfg.jud_elab_5;
+  g('cfg-jud-elab-10').value  = cfg.jud_elab_10;
+  g('cfg-jud-elab-15').value  = cfg.jud_elab_15;
+  g('cfg-jud-lim-5').value    = cfg.jud_lim_5;
+  g('cfg-jud-lim-10').value   = cfg.jud_lim_10;
+  g('cfg-jud-lim-15').value   = cfg.jud_lim_15;
+  g('cfg-jud-tim-5').value    = cfg.jud_tim_5;
+  g('cfg-jud-tim-10').value   = cfg.jud_tim_10;
+  g('cfg-jud-tim-15').value   = cfg.jud_tim_15;
+  g('cfg-jud-ag-10').value    = cfg.jud_ag_10;
+  g('cfg-jud-ag-15').value    = cfg.jud_ag_15;
+  g('cfg-adm-ptf-15').value   = cfg.adm_ptf_15;
+  g('cfg-adm-ptf-30').value   = cfg.adm_ptf_30;
+  g('cfg-adm-ptf-60').value   = cfg.adm_ptf_60;
+  g('cfg-adm-lim-15').value   = cfg.adm_lim_15;
+  g('cfg-adm-lim-30').value   = cfg.adm_lim_30;
+  g('cfg-adm-lim-60').value   = cfg.adm_lim_60;
+  openOverlay('ovl-cfg');
+};
+
+window.saveSettings = async function() {
+  const n = id => parseInt(document.getElementById(id).value) || 0;
+  const newCfg = {
+    urgente_dias:   n('cfg-urgente'),
+    atencao_dias:   n('cfg-atencao'),
+    jud_elab_5:     n('cfg-jud-elab-5'),
+    jud_elab_10:    n('cfg-jud-elab-10'),
+    jud_elab_15:    n('cfg-jud-elab-15'),
+    jud_lim_5:      n('cfg-jud-lim-5'),
+    jud_lim_10:     n('cfg-jud-lim-10'),
+    jud_lim_15:     n('cfg-jud-lim-15'),
+    jud_tim_5:      n('cfg-jud-tim-5'),
+    jud_tim_10:     n('cfg-jud-tim-10'),
+    jud_tim_15:     n('cfg-jud-tim-15'),
+    jud_ag_10:      n('cfg-jud-ag-10'),
+    jud_ag_15:      n('cfg-jud-ag-15'),
+    adm_ptf_15:     n('cfg-adm-ptf-15'),
+    adm_ptf_30:     n('cfg-adm-ptf-30'),
+    adm_ptf_60:     n('cfg-adm-ptf-60'),
+    adm_lim_15:     n('cfg-adm-lim-15'),
+    adm_lim_30:     n('cfg-adm-lim-30'),
+    adm_lim_60:     n('cfg-adm-lim-60'),
+  };
+  const btn = document.getElementById('btn-cfg-save');
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  try {
+    await setDoc(doc(db,'config','prazos'), newCfg);
+    cfg = newCfg;
+    closeOverlay2('ovl-cfg');
+    render();
+  } catch(e) {
+    alert('Erro ao salvar configurações: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Salvar Configurações';
+  }
+};
+
 window.setTab      = t => { tab=t; render(); };
 window.openNew     = openNewModal;
 window.openEdit    = openEditModal;
@@ -917,6 +1002,80 @@ window.aNadaFazer  = doANadaFazer;
 window.reabrir     = doReabrir;
 window.excluir     = doExcluir;
 </script>
+
+<!-- Modal: configurações -->
+<div class="overlay" id="ovl-cfg">
+  <div class="modal">
+    <div class="m-hdr">
+      <h2>⚙ Configurações de Prazos</h2>
+      <button class="m-close" onclick="closeOverlay('ovl-cfg')">×</button>
+    </div>
+    <div class="m-body">
+      <div class="cfg-sec"><h3>Urgências</h3>
+        <p class="cfg-desc">Quantos dias úteis antes do fatal vira cada nível de urgência.</p>
+        <div class="fgrid">
+          <div class="fg"><label>URGENTE — D-X antes do fatal</label><input type="number" id="cfg-urgente" min="1" max="10"/></div>
+          <div class="fg"><label>ATENÇÃO — D-X antes do fatal</label><input type="number" id="cfg-atencao" min="1" max="20"/></div>
+        </div>
+      </div>
+      <div class="cfg-sec"><h3>Judicial — Prazo TF (Elaborar)</h3>
+        <p class="cfg-desc">Dias úteis antes do fatal para o prazo TF inicial de elaboração.</p>
+        <div class="fgrid">
+          <div class="fg"><label>5 dias úteis → D-X</label><input type="number" id="cfg-jud-elab-5" min="1"/></div>
+          <div class="fg"><label>10 dias úteis → D-X</label><input type="number" id="cfg-jud-elab-10" min="1"/></div>
+          <div class="fg"><label>15 dias úteis → D-X</label><input type="number" id="cfg-jud-elab-15" min="1"/></div>
+        </div>
+      </div>
+      <div class="cfg-sec"><h3>Judicial — Limite para Reagendamento</h3>
+        <p class="cfg-desc">Última data em que é possível reagendar (dias úteis antes do fatal).</p>
+        <div class="fgrid">
+          <div class="fg"><label>5 dias úteis → D-X</label><input type="number" id="cfg-jud-lim-5" min="1"/></div>
+          <div class="fg"><label>10 dias úteis → D-X</label><input type="number" id="cfg-jud-lim-10" min="1"/></div>
+          <div class="fg"><label>15 dias úteis → D-X</label><input type="number" id="cfg-jud-lim-15" min="1"/></div>
+        </div>
+      </div>
+      <div class="cfg-sec"><h3>Judicial — Alinhar com TIM</h3>
+        <p class="cfg-desc">Dias úteis após a disponibilização para o prazo TF quando "Alinhar com TIM" está ativo.</p>
+        <div class="fgrid">
+          <div class="fg"><label>5 dias úteis → D+X</label><input type="number" id="cfg-jud-tim-5" min="1"/></div>
+          <div class="fg"><label>10 dias úteis → D+X</label><input type="number" id="cfg-jud-tim-10" min="1"/></div>
+          <div class="fg"><label>15 dias úteis → D+X</label><input type="number" id="cfg-jud-tim-15" min="1"/></div>
+        </div>
+      </div>
+      <div class="cfg-sec"><h3>Judicial — Ag. Retorno TIM</h3>
+        <p class="cfg-desc">Dias úteis antes do fatal para o prazo TF ao entrar em "Ag. Retorno TIM".</p>
+        <div class="fgrid">
+          <div class="fg"><label>10 dias úteis → D-X</label><input type="number" id="cfg-jud-ag-10" min="1"/></div>
+          <div class="fg"><label>15 dias úteis → D-X</label><input type="number" id="cfg-jud-ag-15" min="1"/></div>
+        </div>
+      </div>
+      <div class="cfg-sec"><h3>Administrativo — Prazo TF</h3>
+        <p class="cfg-desc">Dias corridos antes do fatal para o prazo TF administrativo.</p>
+        <div class="fgrid">
+          <div class="fg"><label>15 dias corridos → D-X</label><input type="number" id="cfg-adm-ptf-15" min="1"/></div>
+          <div class="fg"><label>30 dias corridos → D-X</label><input type="number" id="cfg-adm-ptf-30" min="1"/></div>
+          <div class="fg"><label>60 dias corridos → D-X</label><input type="number" id="cfg-adm-ptf-60" min="1"/></div>
+        </div>
+      </div>
+      <div class="cfg-sec"><h3>Administrativo — Limite para Reagendamento</h3>
+        <p class="cfg-desc">Última data em que é possível reagendar (dias corridos antes do fatal).</p>
+        <div class="fgrid">
+          <div class="fg"><label>15 dias corridos → D-X</label><input type="number" id="cfg-adm-lim-15" min="1"/></div>
+          <div class="fg"><label>30 dias corridos → D-X</label><input type="number" id="cfg-adm-lim-30" min="1"/></div>
+          <div class="fg"><label>60 dias corridos → D-X</label><input type="number" id="cfg-adm-lim-60" min="1"/></div>
+        </div>
+      </div>
+      <div class="alert-y" style="margin-top:14px;font-size:.75rem;">
+        ⚠️ Em breve estas configurações serão restritas ao login da coordenadora.
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-edit" onclick="closeOverlay('ovl-cfg')">Cancelar</button>
+      <button class="btn btn-prot" id="btn-cfg-save" onclick="window.saveSettings()">Salvar Configurações</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- #app -->
 </body>
 </html>
