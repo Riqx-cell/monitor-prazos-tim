@@ -505,7 +505,7 @@ function render() {
   document.getElementById('list-arq').innerHTML  =renderList(arq,false,true);
   document.getElementById('list-pend').innerHTML =renderPendentes(pend);
 
-  ['hoje','todos','arq'].forEach(id=>{
+  ['hoje','todos','arq','pend'].forEach(id=>{
     document.getElementById(`list-${id}`).style.display=tab===id?'':'none';
     document.getElementById(`tab-${id}`).classList.toggle('active',tab===id);
   });
@@ -1246,6 +1246,7 @@ window.excluir     = doExcluir;
         </div>
       </div>
       <div class="alert-y" style="margin-top:14px;font-size:.75rem;">
+        ⚠️ Em breve estas configurações serão restritas ao login da coordenadora.
       </div>
     </div>
     <div class="m-foot">
