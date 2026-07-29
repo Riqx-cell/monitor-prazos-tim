@@ -1101,13 +1101,14 @@ async function doDescartarPendente(id) {
 
 function doRevisarPendente(id) {
   const item = items.find(i=>i.id===id); if(!item) return;
-  // Estimate dur from cien/fatal
-  let dur = '10';
-  if (item.cien && item.fatal) {
+  // Usa item.dur se já estiver salvo; só estima se estiver vazio
+  let dur = item.dur || '';
+  if (!dur && item.cien && item.fatal) {
     let d = proxUtil(parseD(item.cien)), count = 0, f = parseD(item.fatal);
     while (d < f) { d.setDate(d.getDate()+1); if(isUtil(d)) count++; }
     dur = count <= 6 ? '5' : count <= 12 ? '10' : '15';
   }
+  if (!dur) dur = '10'; // fallback final
   editId = id;
   document.getElementById('m-new-title').textContent = 'Revisar e Confirmar Prazo';
   document.getElementById('f-proc').value = item.proc||'';
