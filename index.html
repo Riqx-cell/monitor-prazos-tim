@@ -288,9 +288,17 @@
         <div class="fg full"><label>Providência</label><textarea id="f-prov" placeholder="Providências a tomar…"></textarea></div>
         <div class="fg full">
           <label class="cb-label">
-            <input type="checkbox" id="f-alinha-tim" onchange="updPreview()"/>
+            <input type="checkbox" id="f-alinha-tim" onchange="updPreview();toggleFase()"/>
             <span>Precisa alinhar com a TIM</span>
           </label>
+        </div>
+        <div class="fg full" id="fg-fase" style="display:none">
+          <label>Fase atual</label>
+          <select id="f-fase-inicial">
+            <option value="Elaborar">Elaborar</option>
+            <option value="Enviar TIM">Enviar TIM</option>
+            <option value="Ag. Retorno TIM">Ag. Retorno TIM</option>
+          </select>
         </div>
       </div>
       <div class="calc-preview" id="calc-prev"></div>
@@ -782,6 +790,8 @@ function openNewModal(tipo='judicial'){
   ['f-proc','f-caso','f-org','f-adv','f-desc','f-prov'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('f-cien').valueAsDate=new Date();
   document.getElementById('f-alinha-tim').checked=false;
+  document.getElementById('f-fase-inicial').value='Elaborar';
+  document.getElementById('fg-fase').style.display='none';
   setTipoForm(tipo);
   document.getElementById('tipo-picker').classList.remove('open');
   updPreview(); openOverlay('ovl-new');
@@ -799,7 +809,12 @@ function openEditModal(id){
   document.getElementById('f-adv').value=item.adv||'';
   document.getElementById('f-desc').value=item.desc||'';
   document.getElementById('f-prov').value=item.prov||'';
-  document.getElementById('f-alinha-tim').checked=item.alinhaTIM||false;
+  const hasAlinha=item.alinhaTIM||false;
+  document.getElementById('f-alinha-tim').checked=hasAlinha;
+  // fase: mostra seletor e pré-seleciona o status atual (se for um dos status ativos)
+  const faseOpts=['Elaborar','Enviar TIM','Ag. Retorno TIM'];
+  document.getElementById('f-fase-inicial').value=faseOpts.includes(item.status)?item.status:'Elaborar';
+  document.getElementById('fg-fase').style.display=hasAlinha?'':'none';
   updPreview(); openOverlay('ovl-new');
 }
 // ── Cálculos Administrativos (dias corridos) ──────────────────────────────
@@ -857,6 +872,10 @@ function updPreview(){
   el.style.display='';
   el.innerHTML=`📅 <strong>Prazo TF inicial:</strong> ${fmtBR(toISO(prazo))}${alinha&&tipo==='judicial'?' <span style="color:#0e7490;font-weight:700">(alinhar TIM)</span>':''} &nbsp;|&nbsp; ⚖ <strong>Fatal:</strong> ${fatal?fmtBR(toISO(fatal)):'S/P'}`;
 }
+function toggleFase(){
+  const show=document.getElementById('f-alinha-tim').checked;
+  document.getElementById('fg-fase').style.display=show?'':'none';
+}
 async function doSaveItem(){
   const cien=document.getElementById('f-cien').value, caso=document.getElementById('f-caso').value.trim();
   if(!caso||!cien){alert('Preencha ao menos o Caso e a Data da Ciência.');return;}
@@ -864,6 +883,7 @@ async function doSaveItem(){
   const tipo=document.getElementById('f-tipo').value;
   const fatal=calcFatalUniv(cien,dur,tipo);
   const alinhaTIM=document.getElementById('f-alinha-tim').checked && tipo==='judicial';
+  const faseInicial=alinhaTIM ? document.getElementById('f-fase-inicial').value : 'Elaborar';
   const btn=document.getElementById('btn-save');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Salvando…';
   try {
@@ -878,16 +898,21 @@ async function doSaveItem(){
     };
     const calcPtf = () => alinhaTIM ? calcPrazoTIM(cien,dur,fatal) : calcPrazoUniv(cien,dur,fatal,tipo);
     if(editId){
-      data.prazoTF=toISO(calcPtf());
       const cur=items.find(i=>i.id===editId);
-      if(cur&&cur.status==='pendente'){
-        data.status='Elaborar'; // ativa o prazo pendente
-      } else if(cur&&cur.status!=='Elaborar'){
-        delete data.prazoTF;
+      if(alinhaTIM){
+        // alinhaTIM ativo: permite definir a fase e recalcula prazoTF
+        data.status=faseInicial;
+        data.prazoTF=toISO(calcPtf());
+      } else if(cur&&cur.status==='pendente'){
+        data.status='Elaborar'; // ativa pendente sem TIM
+        data.prazoTF=toISO(calcPtf());
+      } else if(cur&&cur.status==='Elaborar'){
+        data.prazoTF=toISO(calcPtf()); // recalcula enquanto ainda em Elaborar
       }
+      // outros status não-alinhaTIM: não toca prazoTF (gerenciado pelo fluxo de ações)
       await fsUpdate(editId,data);
     } else {
-      data.status='Elaborar'; data.arqAt=null;
+      data.status=faseInicial; data.arqAt=null;
       data.prazoTF=toISO(calcPtf());
       await fsAdd(data);
     }
@@ -1095,6 +1120,8 @@ function doRevisarPendente(id) {
   document.getElementById('f-desc').value = item.desc||'';
   document.getElementById('f-prov').value = item.prov||'';
   document.getElementById('f-alinha-tim').checked = false;
+  document.getElementById('f-fase-inicial').value = 'Elaborar';
+  document.getElementById('fg-fase').style.display = 'none';
   document.getElementById('btn-save').textContent = 'Confirmar Prazo';
   updPreview();
   openOverlay('ovl-new');
