@@ -279,6 +279,7 @@
             <option value="5">5 dias úteis</option>
             <option value="10" selected>10 dias úteis</option>
             <option value="15">15 dias úteis</option>
+            <option value="30">30 dias úteis</option>
             <option value="S/P">S/P — Sem prazo fatal</option>
           </select>
         </div>
@@ -350,7 +351,8 @@ const defaultCfg = {
   jud_elab_5:3, jud_elab_10:5, jud_elab_15:8,
   jud_lim_5:1, jud_lim_10:2, jud_lim_15:3,
   jud_tim_5:1, jud_tim_10:3, jud_tim_15:5,
-  jud_ag_10:7, jud_ag_15:10,
+  jud_ag_10:7, jud_ag_15:10, jud_ag_30:20,
+  jud_elab_30:15, jud_lim_30:5, jud_tim_30:7,
   adm_ptf_15:5, adm_ptf_30:10, adm_ptf_60:20,
   adm_lim_15:3, adm_lim_30:10, adm_lim_60:20,
 };
@@ -376,16 +378,18 @@ function calcFatal(cien,dur) {
 }
 function calcPrazoElaborar(cien,dur,fatal) {
   if(dur==='S/P')return addUtil(proxUtil(parseD(cien)),5);
-  const n=parseInt(dur); return subUtil(fatal,n===5?cfg.jud_elab_5:n===10?cfg.jud_elab_10:cfg.jud_elab_15);
+  const n=parseInt(dur); return subUtil(fatal,n===5?cfg.jud_elab_5:n===10?cfg.jud_elab_10:n===30?cfg.jud_elab_30:cfg.jud_elab_15);
 }
 function limiteElaborar(dur,fatal) {
   if(!fatal||dur==='S/P')return null;
-  const n=parseInt(dur); return subUtil(fatal,n===5?cfg.jud_lim_5:n===10?cfg.jud_lim_10:cfg.jud_lim_15);
+  const n=parseInt(dur); return subUtil(fatal,n===5?cfg.jud_lim_5:n===10?cfg.jud_lim_10:n===30?cfg.jud_lim_30:cfg.jud_lim_15);
 }
 function calcPrazoAgRetorno(dur,fatal) {
-  if(!fatal||dur==='S/P')return proxUtil(today());
-  const n=parseInt(dur); if(n===5)return proxUtil(today());
-  return subUtil(fatal,n===10?cfg.jud_ag_10:cfg.jud_ag_15);
+  if(!fatal||dur==='S/P'){const r=proxUtil(today()); return (fatal&&r>fatal)?fatal:r;}
+  const n=parseInt(dur);
+  if(n===5){const r=proxUtil(today()); return r>fatal?fatal:r;}
+  const r=subUtil(fatal,n===10?cfg.jud_ag_10:n===30?cfg.jud_ag_30:cfg.jud_ag_15);
+  return r>fatal?fatal:r;
 }
 function urgencia(item) {
   const t=today(), fatal=item.fatal?parseD(item.fatal):null, ptf=item.prazoTF?parseD(item.prazoTF):null;
@@ -568,7 +572,7 @@ function renderCard(item,acts,arch){
         <div class="c-meta">
           ${item.org?`<span>🏛 ${esc(item.org)}</span>`:''}
           <span>⚖ ${item.dur==='S/P'?'Sem prazo fatal':item.dur+'d úteis'}</span>
-          <span>📩 Ciência: ${fmtBR(item.cien)}</span>
+          <span>📩 Disponibilização: ${fmtBR(item.cien)}</span>
         </div>
       </div>
       <div class="card-r">${tipoBadge}<span class="sbadge ${sClass}">${item.status}</span>${urgBadge}</div>
@@ -626,9 +630,13 @@ function openActModal(id){
     }
   } else if(item.status==='Enviar TIM'){
     const ref=item.prazoTF?parseD(item.prazoTF):t, refMax=ref<t?t:ref;
+    const novoEnvReag = fatal && proxUtil(refMax)>fatal ? fatal : proxUtil(refMax);
+    const bloqEnvReag = fatal && novoEnvReag>=fatal;
     body+=`<div class="asec"><h3>Envio à TIM</h3><div class="achoices">
       <button class="achoice" onclick="aEnviado('${id}')"><span class="ico">📤</span><span class="txt"><strong>Enviado</strong><span>Minuta enviada → Ag. Retorno TIM</span></span></button>
-      <button class="achoice" onclick="aEnvReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Reagendar +1 dia útil</strong><span>Novo Prazo TF: ${fmtBR(toISO(proxUtil(refMax)))}</span></span></button>
+      ${bloqEnvReag
+        ? `<div class="blocked">🔒 Sem margem para reagendar — envie ou protocole.</div>`
+        : `<button class="achoice" onclick="aEnvReag('${id}')"><span class="ico">📅</span><span class="txt"><strong>Reagendar +1 dia útil</strong><span>Novo Prazo TF: ${fmtBR(toISO(novoEnvReag))}</span></span></button>`}
     </div></div>${btnProtDireto}`;
   } else if(item.status==='Ag. Retorno TIM'){
     const durN=item.dur==='S/P'?0:parseInt(item.dur);
@@ -679,8 +687,9 @@ async function doAEnviado(id){
 }
 async function doAEnvReag(id){
   const item=items.find(i=>i.id===id); if(!item)return;
-  const t=today(),ref=item.prazoTF?parseD(item.prazoTF):t,refMax=ref<t?t:ref;
-  await fsUpdate(id,{prazoTF:toISO(proxUtil(refMax))});
+  const t=today(),fatal=item.fatal?parseD(item.fatal):null,ref=item.prazoTF?parseD(item.prazoTF):t,refMax=ref<t?t:ref;
+  let novo=proxUtil(refMax); if(fatal&&novo>fatal)novo=fatal;
+  await fsUpdate(id,{prazoTF:toISO(novo)});
   closeOverlay('ovl-act');
 }
 async function doARespondeu(id){
@@ -761,6 +770,7 @@ function setTipoForm(tipo){
     : `<option value="5">5 dias úteis</option>
        <option value="10" selected>10 dias úteis</option>
        <option value="15">15 dias úteis</option>
+       <option value="30">30 dias úteis</option>
        <option value="S/P">S/P — Sem prazo fatal</option>`;
   // "Alinhar com TIM" só faz sentido para judicial
   document.getElementById('f-alinha-tim').closest('.fg').style.display = adm ? 'none' : '';
@@ -831,7 +841,7 @@ function calcPrazoUniv(cien, dur, fatal, tipo) {
 function calcPrazoTIM(cien, dur, fatal) {
   if(dur==='S/P') return calcPrazoElaborar(cien, dur, fatal);
   const n = parseInt(dur);
-  const dias = n===15?cfg.jud_tim_15:n===10?cfg.jud_tim_10:cfg.jud_tim_5;
+  const dias = n===30?cfg.jud_tim_30:n===15?cfg.jud_tim_15:n===10?cfg.jud_tim_10:cfg.jud_tim_5;
   let ptf = addUtil(proxUtil(parseD(cien)), dias);
   if(fatal && ptf > fatal) ptf = fatal; // nunca ultrapassa o fatal
   return ptf;
@@ -962,6 +972,10 @@ window.openSettings = function() {
   g('cfg-jud-tim-15').value   = cfg.jud_tim_15;
   g('cfg-jud-ag-10').value    = cfg.jud_ag_10;
   g('cfg-jud-ag-15').value    = cfg.jud_ag_15;
+  g('cfg-jud-ag-30').value    = cfg.jud_ag_30;
+  g('cfg-jud-elab-30').value  = cfg.jud_elab_30;
+  g('cfg-jud-lim-30').value   = cfg.jud_lim_30;
+  g('cfg-jud-tim-30').value   = cfg.jud_tim_30;
   g('cfg-adm-ptf-15').value   = cfg.adm_ptf_15;
   g('cfg-adm-ptf-30').value   = cfg.adm_ptf_30;
   g('cfg-adm-ptf-60').value   = cfg.adm_ptf_60;
@@ -987,6 +1001,10 @@ window.saveSettings = async function() {
     jud_tim_15:     n('cfg-jud-tim-15'),
     jud_ag_10:      n('cfg-jud-ag-10'),
     jud_ag_15:      n('cfg-jud-ag-15'),
+    jud_ag_30:      n('cfg-jud-ag-30'),
+    jud_elab_30:    n('cfg-jud-elab-30'),
+    jud_lim_30:     n('cfg-jud-lim-30'),
+    jud_tim_30:     n('cfg-jud-tim-30'),
     adm_ptf_15:     n('cfg-adm-ptf-15'),
     adm_ptf_30:     n('cfg-adm-ptf-30'),
     adm_ptf_60:     n('cfg-adm-ptf-60'),
@@ -1012,7 +1030,10 @@ window.saveSettings = async function() {
 function renderPendentes(list) {
   const bar = `<div class="pend-bar">
     <p>📋 ${list.length} processo(s) aguardando revisão — importados do ALERTE.</p>
-    <button class="btn-import" onclick="window.importarAlerte()">📥 Importar planilha ALERTE</button>
+    <div style="display:flex;gap:8px;flex-shrink:0">
+      <button class="btn-import" onclick="window.importarAlerte()">📥 Importar planilha ALERTE</button>
+      <button class="btn-import" style="background:#6b7280" onclick="window.limparPendentes()">🗑 Limpar todos</button>
+    </div>
   </div>`;
   if (!list.length) return `<div class="pend-bar" style="flex-direction:column;align-items:flex-start;gap:8px">
     <p style="margin:0">Nenhum processo pendente. Importe uma planilha ALERTE para começar a revisão.</p>
@@ -1102,11 +1123,13 @@ document.getElementById('xlsx-input').addEventListener('change', async function(
   if (headerIdx === -1) { alert('Planilha inválida — coluna "Processo" não encontrada.'); e.target.value=''; return; }
 
   const headers = rows[headerIdx];
-  const gi = name => headers.indexOf(name);
+  const gi = name => headers.findIndex(h => h && String(h).trim().toLowerCase() === name.trim().toLowerCase());
   const iProc = gi('Processo');
-  const iCaso = gi('Caso TF');
+  const iCaso = gi('Caso TF') >= 0 ? gi('Caso TF') : gi('Caso');
   const iCien = gi('Data Ciência');
   const iDesc = gi('Descrição');
+  const iProv = gi('Providência');
+  const iAdv  = gi('Responsável');
 
   const fmtD = v => {
     if (!v) return null;
@@ -1138,10 +1161,12 @@ document.getElementById('xlsx-input').addEventListener('change', async function(
     const newRef = doc(col);
     batch.set(newRef, {
       proc,
-      caso:      String(row[iCaso]||'').trim(),
-      cien:      fmtD(row[iCien]),
-      desc:      String(row[iDesc]||'').trim(),
-      org:       '', adv: '', prov: '', prazoTF: null, fatal: null,
+      caso:   String(row[iCaso]||'').trim(),
+      cien:   fmtD(row[iCien]),
+      desc:   String(row[iDesc]||'').trim(),
+      prov:   iProv>=0 ? String(row[iProv]||'').trim() : '',
+      adv:    iAdv>=0  ? String(row[iAdv]||'').trim()  : '',
+      org:    '', prazoTF: null, fatal: null,
       dur:       '10', tipo: 'judicial', alinhaTIM: false,
       status:    'pendente', arqAt: null,
       createdAt: serverTimestamp(),
@@ -1164,6 +1189,17 @@ document.getElementById('xlsx-input').addEventListener('change', async function(
   }
   e.target.value='';
 });
+
+window.limparPendentes = async function() {
+  const pends = items.filter(i => i.status === 'pendente');
+  if (!pends.length) { alert('Nenhum pendente para limpar.'); return; }
+  if (!confirm(`Remover todos os ${pends.length} processos pendentes? Esta ação não pode ser desfeita.`)) return;
+  const batch = writeBatch(db);
+  pends.forEach(i => batch.delete(doc(db,'prazos',i.id)));
+  try {
+    await batch.commit();
+  } catch(e) { alert('Erro: ' + e.message); }
+};
 
 window.setTab      = t => { tab=t; render(); };
 window.openNew     = openNewModal;
@@ -1204,6 +1240,7 @@ window.excluir     = doExcluir;
           <div class="fg"><label>5 dias úteis → D-X</label><input type="number" id="cfg-jud-elab-5" min="1"/></div>
           <div class="fg"><label>10 dias úteis → D-X</label><input type="number" id="cfg-jud-elab-10" min="1"/></div>
           <div class="fg"><label>15 dias úteis → D-X</label><input type="number" id="cfg-jud-elab-15" min="1"/></div>
+          <div class="fg"><label>30 dias úteis → D-X</label><input type="number" id="cfg-jud-elab-30" min="1"/></div>
         </div>
       </div>
       <div class="cfg-sec"><h3>Judicial — Limite para Reagendamento</h3>
@@ -1212,6 +1249,7 @@ window.excluir     = doExcluir;
           <div class="fg"><label>5 dias úteis → D-X</label><input type="number" id="cfg-jud-lim-5" min="1"/></div>
           <div class="fg"><label>10 dias úteis → D-X</label><input type="number" id="cfg-jud-lim-10" min="1"/></div>
           <div class="fg"><label>15 dias úteis → D-X</label><input type="number" id="cfg-jud-lim-15" min="1"/></div>
+          <div class="fg"><label>30 dias úteis → D-X</label><input type="number" id="cfg-jud-lim-30" min="1"/></div>
         </div>
       </div>
       <div class="cfg-sec"><h3>Judicial — Alinhar com TIM</h3>
@@ -1220,6 +1258,7 @@ window.excluir     = doExcluir;
           <div class="fg"><label>5 dias úteis → D+X</label><input type="number" id="cfg-jud-tim-5" min="1"/></div>
           <div class="fg"><label>10 dias úteis → D+X</label><input type="number" id="cfg-jud-tim-10" min="1"/></div>
           <div class="fg"><label>15 dias úteis → D+X</label><input type="number" id="cfg-jud-tim-15" min="1"/></div>
+          <div class="fg"><label>30 dias úteis → D+X</label><input type="number" id="cfg-jud-tim-30" min="1"/></div>
         </div>
       </div>
       <div class="cfg-sec"><h3>Judicial — Ag. Retorno TIM</h3>
@@ -1227,6 +1266,7 @@ window.excluir     = doExcluir;
         <div class="fgrid">
           <div class="fg"><label>10 dias úteis → D-X</label><input type="number" id="cfg-jud-ag-10" min="1"/></div>
           <div class="fg"><label>15 dias úteis → D-X</label><input type="number" id="cfg-jud-ag-15" min="1"/></div>
+          <div class="fg"><label>30 dias úteis → D-X</label><input type="number" id="cfg-jud-ag-30" min="1"/></div>
         </div>
       </div>
       <div class="cfg-sec"><h3>Administrativo — Prazo TF</h3>
