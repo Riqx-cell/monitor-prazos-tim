@@ -288,7 +288,7 @@
         <div class="fg full"><label>Providência</label><textarea id="f-prov" placeholder="Providências a tomar…"></textarea></div>
         <div class="fg full">
           <label class="cb-label">
-            <input type="checkbox" id="f-alinha-tim" onchange="updPreview();toggleFase()"/>
+            <input type="checkbox" id="f-alinha-tim"/>
             <span>Precisa alinhar com a TIM</span>
           </label>
         </div>
@@ -931,6 +931,7 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
 document.getElementById('f-cien').addEventListener('change',updPreview);
 document.getElementById('f-dur').addEventListener('change',updPreview);
+document.getElementById('f-alinha-tim').addEventListener('change',()=>{ updPreview(); toggleFase(); });
 
 // ── Expose to window (needed for onclick in HTML) ─────────────────────────
 // ── Detecção automática de órgão pelo número CNJ ──────────────────────────
@@ -1152,12 +1153,13 @@ document.getElementById('xlsx-input').addEventListener('change', async function(
 
   const headers = rows[headerIdx];
   const gi = name => headers.findIndex(h => h && String(h).trim().toLowerCase() === name.trim().toLowerCase());
-  const iProc = gi('Processo');
-  const iCaso = gi('Caso TF') >= 0 ? gi('Caso TF') : gi('Caso');
-  const iCien = gi('Data Ciência');
-  const iDesc = gi('Descrição');
-  const iProv = gi('Providência');
-  const iAdv  = gi('Responsável');
+  const iProc  = gi('Processo');
+  const iCaso  = gi('Caso TF') >= 0 ? gi('Caso TF') : gi('Caso');
+  const iCien  = gi('Data Ciência');
+  const iDesc  = gi('Descrição');
+  const iProv  = gi('Providência');
+  const iAdv   = gi('Responsável');
+  const iFatal = gi('Fatal');
 
   const fmtD = v => {
     if (!v) return null;
@@ -1186,6 +1188,20 @@ document.getElementById('xlsx-input').addEventListener('change', async function(
     if (!proc) continue;
     const key = `${proc}|${fmtD(row[iCien])||''}`;
     if (existingKeys.has(key)) { skipped++; continue; }
+
+    // Calcular dur e fatal a partir da coluna "Fatal" da planilha
+    const fatalStr = iFatal >= 0 ? fmtD(row[iFatal]) : null;
+    let dur = 'S/P';
+    if (fatalStr) {
+      const cienStr = fmtD(row[iCien]);
+      if (cienStr) {
+        let d = new Date(cienStr + 'T00:00:00'), count = 0;
+        const f = new Date(fatalStr + 'T00:00:00');
+        while (d < f) { d.setDate(d.getDate()+1); if(isUtil(d)) count++; }
+        dur = count <= 6 ? '5' : count <= 12 ? '10' : count <= 20 ? '15' : count <= 35 ? '30' : 'S/P';
+      }
+    }
+
     const newRef = doc(col);
     batch.set(newRef, {
       proc,
@@ -1194,8 +1210,8 @@ document.getElementById('xlsx-input').addEventListener('change', async function(
       desc:   String(row[iDesc]||'').trim(),
       prov:   iProv>=0 ? String(row[iProv]||'').trim() : '',
       adv:    iAdv>=0  ? String(row[iAdv]||'').trim()  : '',
-      org:    '', prazoTF: null, fatal: null,
-      dur:       '10', tipo: 'judicial', alinhaTIM: false,
+      org:    '', prazoTF: null, fatal: fatalStr || null,
+      dur, tipo: 'judicial', alinhaTIM: false,
       status:    'pendente', arqAt: null,
       createdAt: serverTimestamp(),
     });
