@@ -781,8 +781,6 @@ function setTipoForm(tipo){
        <option value="15">15 dias úteis</option>
        <option value="30">30 dias úteis</option>
        <option value="S/P">S/P — Sem prazo fatal</option>`;
-  // "Alinhar com TIM" só faz sentido para judicial
-  document.getElementById('f-alinha-tim').closest('.fg').style.display = adm ? 'none' : '';
   document.getElementById('m-new-title').textContent = adm ? 'Novo Prazo Administrativo' : 'Novo Prazo Judicial';
 }
 
@@ -869,9 +867,10 @@ function updPreview(){
   const tipo=document.getElementById('f-tipo').value;
   const fatal=calcFatalUniv(cien,dur,tipo);
   const alinha=document.getElementById('f-alinha-tim').checked;
-  const prazo = alinha && tipo==='judicial' ? calcPrazoTIM(cien,dur,fatal) : calcPrazoUniv(cien,dur,fatal,tipo);
+  const useTIM = alinha && tipo==='judicial';
+  const prazo = useTIM ? calcPrazoTIM(cien,dur,fatal) : calcPrazoUniv(cien,dur,fatal,tipo);
   el.style.display='';
-  el.innerHTML=`📅 <strong>Prazo TF inicial:</strong> ${fmtBR(toISO(prazo))}${alinha&&tipo==='judicial'?' <span style="color:#0e7490;font-weight:700">(alinhar TIM)</span>':''} &nbsp;|&nbsp; ⚖ <strong>Fatal:</strong> ${fatal?fmtBR(toISO(fatal)):'S/P'}`;
+  el.innerHTML=`📅 <strong>Prazo TF inicial:</strong> ${fmtBR(toISO(prazo))}${alinha?' <span style="color:#0e7490;font-weight:700">(alinhar TIM)</span>':''} &nbsp;|&nbsp; ⚖ <strong>Fatal:</strong> ${fatal?fmtBR(toISO(fatal)):'S/P'}`;
 }
 function toggleFase(){
   const show=document.getElementById('f-alinha-tim').checked;
@@ -883,7 +882,7 @@ async function doSaveItem(){
   const dur=document.getElementById('f-dur').value;
   const tipo=document.getElementById('f-tipo').value;
   const fatal=calcFatalUniv(cien,dur,tipo);
-  const alinhaTIM=document.getElementById('f-alinha-tim').checked && tipo==='judicial';
+  const alinhaTIM=document.getElementById('f-alinha-tim').checked;
   const faseInicial=alinhaTIM ? document.getElementById('f-fase-inicial').value : 'Elaborar';
   const btn=document.getElementById('btn-save');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Salvando…';
@@ -897,7 +896,7 @@ async function doSaveItem(){
       fatal:fatal?toISO(fatal):null,
       alinhaTIM, tipo,
     };
-    const calcPtf = () => alinhaTIM ? calcPrazoTIM(cien,dur,fatal) : calcPrazoUniv(cien,dur,fatal,tipo);
+    const calcPtf = () => (alinhaTIM && tipo==='judicial') ? calcPrazoTIM(cien,dur,fatal) : calcPrazoUniv(cien,dur,fatal,tipo);
     if(editId){
       const cur=items.find(i=>i.id===editId);
       if(alinhaTIM){
